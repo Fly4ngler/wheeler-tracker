@@ -1,0 +1,16 @@
+# Backend Configuration
+PORT=8080
+GIN_MODE=release
+
+# Database Configuration
+DB_PATH=/data/trades.db
+
+# API Keys (Update these with your real keys)
+FINNHUB_API_KEY=d4c8fh1r01qudf6h53q0d4c8fh1r01qudf6h53qg
+CURRENCYFREAKS_API_KEY=6bfaa4f39fbd49b2ae06947efc4df2de
+IB_HOST=localhost
+IB_PORT=4002
+
+# Logging
+LOG_LEVEL=info
+LOG_PATH=/logs/app.log

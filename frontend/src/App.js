@@ -1,0 +1,64 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import './styles/App.css';
+import TradesPage from './pages/TradesPage';
+import PositionsPage from './pages/PositionsPage';
+import WheelsPage from './pages/WheelsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import TickerPage from './pages/TickerPage';
+
+function Sidebar() {
+  const location = useLocation();
+  
+  const isActive = (path) => location.pathname === path ? 'active' : '';
+  
+  return (
+    <div className="sidebar">
+      <div className="logo">
+         Options Wheel Tracker
+      </div>
+      
+      <Link to="/trades" className={`nav-item ${isActive('/trades')}`}>
+        <span></span> Trades
+      </Link>
+      
+      <Link to="/positions" className={`nav-item ${isActive('/positions')}`}>
+        <span></span> Positions
+      </Link>
+      
+      <Link to="/wheels" className={`nav-item ${isActive('/wheels')}`}>
+        <span></span> Wheels
+      </Link>
+      
+      <Link to="/ticker" className={`nav-item ${isActive('/ticker')}`}>
+        <span></span> Ticker Analysis
+      </Link>
+      
+      <Link to="/analytics" className={`nav-item ${isActive('/analytics')}`}>
+        <span></span> Analytics
+      </Link>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <div className="app">
+        <Sidebar />
+        <div className="main-content">
+          <Routes>
+            <Route path="/" element={<TradesPage />} />
+            <Route path="/trades" element={<TradesPage />} />
+            <Route path="/positions" element={<PositionsPage />} />
+            <Route path="/wheels" element={<WheelsPage />} />
+            <Route path="/ticker" element={<TickerPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+          </Routes>
+        </div>
+      </div>
+    </Router>
+  );
+}
+
+export default App;
