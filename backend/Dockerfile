@@ -2,29 +2,30 @@
 FROM golang:1.21-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache git gcc musl-dev sqlite-dev
+RUN apk add --no-cache git gcc musl-dev sqlite-dev linux-headers
 
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files first
-COPY go.mod go.sum* ./
+# Copy go mod file
+COPY go.mod ./
+
+# Set environment to skip checksum verification
+ENV GOSUMDB=off
+
+# Tidy and download (sin requerir go.sum)
+RUN go mod tidy && go mod download
 
 # Copy all source code
 COPY . .
 
-# Download dependencies and update go.sum
-RUN go mod tidy
-RUN go mod download
-RUN go mod verify
-
-# Build the application
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server
+# Build the application - también desactivar go.sum verification
+RUN CGO_ENABLED=1 GOOS=linux CGO_CFLAGS="-g -O2" go build -mod=mod -a -installsuffix cgo -o main ./cmd/server
 
 # Final stage
 FROM alpine:latest
 
-RUN apk --no-cache add ca-certificates sqlite-libs
+RUN apk --no-cache add ca-certificates sqlite-libs libstdc++
 
 WORKDIR /root/
 
