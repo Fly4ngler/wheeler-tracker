@@ -55,8 +55,8 @@ export default function APIsTab() {
     const cfg = configs[id] || {};
     setFormData({
       api_key: cfg.api_key || '',
-      api_secret: cfg.api_secret || '',
-      additional_config: cfg.additional_config || '',
+      api_secret: cfg.api_secret?.String || cfg.api_secret || '',
+      additional_config: typeof cfg.additional_config === 'string' ? cfg.additional_config : (cfg.additional_config?.String || ''),
     });
     setEditing(id);
     setError('');
@@ -83,7 +83,11 @@ export default function APIsTab() {
       const res = await fetch(`/api/v1/apis/${editing}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          api_key: formData.api_key,
+          api_secret: formData.api_secret || '',
+          additional_config: formData.additional_config ? JSON.parse(formData.additional_config) : {},
+        }),
       });
       if (!res.ok) throw new Error('Error guardando configuración');
       await fetchConfigs();
@@ -98,6 +102,7 @@ export default function APIsTab() {
   const deleteConfig = async (id) => {
     if (!window.confirm(`¿Eliminar configuración de ${id}?`)) return;
     setLoading(true);
+    setError('');
     try {
       const res = await fetch(`/api/v1/apis/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error eliminando configuración');
@@ -111,7 +116,11 @@ export default function APIsTab() {
 
   return (
     <div>
-      {error && <div style={{ color: '#ef4444', marginBottom: '20px', padding: '12px', backgroundColor: '#7f1d1d', borderRadius: '8px' }}>{error}</div>}
+      {error && (
+        <div style={{ color: '#fca5a5', marginBottom: '20px', padding: '12px', backgroundColor: '#7f1d1d', borderRadius: '8px', border: '1px solid #dc2626' }}>
+           {error}
+        </div>
+      )}
       {loading && <div className="loading">Cargando...</div>}
 
       <div className="stats-grid" style={{ marginTop: '20px' }}>
@@ -127,15 +136,15 @@ export default function APIsTab() {
               {!isEditing ? (
                 <>
                   <p style={{ color: '#9ca3af', fontSize: '13px', marginBottom: '16px' }}>
-                    <strong>Estado:</strong> {config ? <span style={{ color: '#10b981' }}> Configurado</span> : <span style={{ color: '#f59e0b' }}> No configurado</span>}
+                    <strong>Estado:</strong> {config ? <span style={{ color: '#10b981' }}>  Configurado</span> : <span style={{ color: '#f59e0b' }}>  No configurado</span>}
                   </p>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button className="btn btn-primary" onClick={() => startEdit(provider.id)} style={{ padding: '8px 12px', fontSize: '14px' }}>
-                      {config ? 'Editar' : 'Configurar'}
+                      {config ? ' Editar' : ' Configurar'}
                     </button>
                     {config && (
-                      <button onClick={() => deleteConfig(provider.id)} style={{ padding: '8px 12px', backgroundColor: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}>
-                        Eliminar
+                      <button onClick={() => deleteConfig(provider.id)} style={{ padding: '8px 12px', backgroundColor: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' }}>
+                         Eliminar
                       </button>
                     )}
                   </div>
@@ -145,7 +154,7 @@ export default function APIsTab() {
                   <div className="form-group">
                     <label style={{ color: '#9ca3af' }}>API Key *</label>
                     <input
-                      type="password"
+                      type="text"
                       name="api_key"
                       placeholder={provider.keyExample}
                       value={formData.api_key}
@@ -156,7 +165,7 @@ export default function APIsTab() {
                     <div className="form-group">
                       <label style={{ color: '#9ca3af' }}>API Secret / Contraseña</label>
                       <input
-                        type="password"
+                        type="text"
                         name="api_secret"
                         placeholder="Tu contraseña de IBKR"
                         value={formData.api_secret}
@@ -176,10 +185,10 @@ export default function APIsTab() {
                   </div>
                   <div className="form-actions">
                     <button className="btn btn-primary" onClick={saveConfig} disabled={loading}>
-                      {loading ? 'Guardando...' : 'Guardar'}
+                      {loading ? 'Guardando...' : ' Guardar'}
                     </button>
                     <button onClick={cancelEdit} style={{ padding: '10px 20px', background: '#2d3748', color: '#e5e7eb', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-                      Cancelar
+                       Cancelar
                     </button>
                   </div>
                 </div>

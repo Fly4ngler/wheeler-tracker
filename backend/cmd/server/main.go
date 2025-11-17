@@ -76,6 +76,8 @@ v1.PUT("/trades/:id", tradeHandler.UpdateTrade)
 v1.DELETE("/trades/:id", tradeHandler.DeleteTrade)
 v1.POST("/trades/:id/close", tradeHandler.CloseTrade)
 v1.POST("/trades/import", tradeImportHandler.Import)
+v1.POST("/trades/validate", tradeImportHandler.ValidateCSV)
+v1.POST("/trades/confirm", tradeImportHandler.ConfirmImport)
 
 // ==================== ACCOUNTS ====================
 v1.GET("/accounts", accountHandler.ListAccounts)
@@ -85,6 +87,7 @@ v1.PUT("/accounts/:id", accountHandler.UpdateAccount)
 v1.DELETE("/accounts/:id", accountHandler.DeleteAccount)
 v1.POST("/accounts/:id/deposit", accountHandler.Deposit)
 v1.POST("/accounts/:id/withdrawal", accountHandler.Withdrawal)
+v1.GET("/accounts/:id/transactions", accountHandler.GetTransactionHistory)
 
 // ==================== POSITIONS ====================
 v1.GET("/positions", positionHandler.ListPositions)

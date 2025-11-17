@@ -255,3 +255,142 @@ return false
 }
 return true
 }
+
+// ValidateCSV parsea el CSV y retorna trades para validación (sin guardar)
+func (h *TradeImportHandler) ValidateCSV(c *gin.Context) {
+file, _, err := c.Request.FormFile("file")
+if err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get file"})
+return
+}
+defer file.Close()
+
+reader := csv.NewReader(file)
+reader.TrimLeadingSpace = true
+
+headers, err := reader.Read()
+if err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read CSV headers"})
+return
+}
+
+// Validar headers (solo requeridos)
+requiredHeaders := []string{"account_id", "symbol", "trade_type", "contracts", "strike_price", "premium_per_share", "open_date", "expiration_date"}
+if !validateHeaders(headers, requiredHeaders) {
+c.JSON(http.StatusBadRequest, gin.H{
+"error": fmt.Sprintf("CSV headers mismatch. Required: %v", requiredHeaders),
+})
+return
+}
+
+type ValidationResult struct {
+LineNum       int                    `json:"line_num"`
+Trade         models.Trade           `json:"trade"`
+PL            *float64               `json:"pl"`
+MissingFields []string               `json:"missing_fields"`
+IsValid       bool                   `json:"is_valid"`
+}
+
+var results []ValidationResult
+var parseErrors []string
+lineNum := 1
+
+// Parsear todas las líneas
+for {
+lineNum++
+record, err := reader.Read()
+if err == io.EOF {
+break
+}
+
+if err != nil {
+parseErrors = append(parseErrors, fmt.Sprintf("Line %d: %v", lineNum, err))
+continue
+}
+
+trade, err := h.parseTradeRecord(record, headers)
+if err != nil {
+parseErrors = append(parseErrors, fmt.Sprintf("Line %d: %v", lineNum, err))
+continue
+}
+
+// Calcular P/L si close_price existe
+var pl *float64
+if trade.ClosePrice != nil {
+plValue := (trade.PremiumPerShare - *trade.ClosePrice) * float64(trade.Contracts)
+pl = &plValue
+}
+
+// Detectar campos faltantes (opcionales pero importantes)
+var missingFields []string
+if trade.CloseDate == nil || *trade.CloseDate == "" {
+missingFields = append(missingFields, "close_date")
+}
+if trade.ClosePrice == nil {
+missingFields = append(missingFields, "close_price")
+}
+if trade.CloseMethod == nil || *trade.CloseMethod == "" {
+missingFields = append(missingFields, "close_method")
+}
+
+// Es válido si no hay campos críticos faltantes
+isValid := len(missingFields) == 0
+
+results = append(results, ValidationResult{
+LineNum:       lineNum,
+Trade:         trade,
+PL:            pl,
+MissingFields: missingFields,
+IsValid:       isValid,
+})
+}
+
+if len(results) == 0 {
+c.JSON(http.StatusBadRequest, gin.H{
+"error":        "No valid trades found in CSV",
+"parse_errors": parseErrors,
+})
+return
+}
+
+c.JSON(http.StatusOK, gin.H{
+"total_records": len(results),
+"parse_errors":  parseErrors,
+"results":       results,
+})
+}
+
+// ConfirmImport recibe trades validados y los guarda
+func (h *TradeImportHandler) ConfirmImport(c *gin.Context) {
+var req struct {
+Trades []models.Trade `json:"trades" binding:"required"`
+}
+
+if err := c.ShouldBindJSON(&req); err != nil {
+c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+return
+}
+
+if len(req.Trades) == 0 {
+c.JSON(http.StatusBadRequest, gin.H{"error": "No trades provided"})
+return
+}
+
+// Guardar trades en transacción
+importedCount, transactionErrors, err := h.TradeService.SaveTradesTransaction(req.Trades)
+if err != nil {
+c.JSON(http.StatusInternalServerError, gin.H{
+"message":            err.Error(),
+"imported_count":     importedCount,
+"transaction_errors": transactionErrors,
+})
+return
+}
+
+c.JSON(http.StatusOK, gin.H{
+"message":            "Trades imported successfully",
+"imported_count":     importedCount,
+"total_attempted":    len(req.Trades),
+"transaction_errors": transactionErrors,
+})
+}
