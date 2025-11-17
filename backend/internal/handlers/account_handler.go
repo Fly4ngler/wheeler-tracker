@@ -16,10 +16,11 @@ func NewAccountHandler(db *sql.DB) *AccountHandler {
     return &AccountHandler{db: db}
 }
 
+// Lista las cuentas activas
 func (h *AccountHandler) ListAccounts(c *gin.Context) {
     rows, err := h.db.Query(`
-        SELECT account_id, name, broker, currency, initial_balance, 
-               current_balance, is_active, created_at, updated_at 
+        SELECT account_id, name, broker, currency, initial_balance,
+               current_balance, is_active, created_at, updated_at
         FROM accounts WHERE is_active = 1
     `)
     if err != nil {
@@ -43,18 +44,19 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
     c.JSON(http.StatusOK, accounts)
 }
 
+// Obtiene una cuenta por ID
 func (h *AccountHandler) GetAccount(c *gin.Context) {
     id := c.Param("id")
-    
+
     var acc models.Account
     err := h.db.QueryRow(`
-        SELECT account_id, name, broker, currency, initial_balance, 
-               current_balance, is_active, created_at, updated_at 
+        SELECT account_id, name, broker, currency, initial_balance,
+               current_balance, is_active, created_at, updated_at
         FROM accounts WHERE account_id = ?
     `, id).Scan(&acc.AccountID, &acc.Name, &acc.Broker, &acc.Currency,
         &acc.InitialBalance, &acc.CurrentBalance, &acc.IsActive,
         &acc.CreatedAt, &acc.UpdatedAt)
-    
+
     if err == sql.ErrNoRows {
         c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
         return
@@ -67,6 +69,7 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
     c.JSON(http.StatusOK, acc)
 }
 
+// Crea una nueva cuenta
 func (h *AccountHandler) CreateAccount(c *gin.Context) {
     var acc models.Account
     if err := c.ShouldBindJSON(&acc); err != nil {
@@ -78,7 +81,7 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
         INSERT INTO accounts (name, broker, currency, initial_balance, current_balance)
         VALUES (?, ?, ?, ?, ?)
     `, acc.Name, acc.Broker, acc.Currency, acc.InitialBalance, acc.CurrentBalance)
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -89,21 +92,22 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
     c.JSON(http.StatusCreated, acc)
 }
 
+// Actualiza una cuenta existente
 func (h *AccountHandler) UpdateAccount(c *gin.Context) {
     id := c.Param("id")
     var acc models.Account
-    
+
     if err := c.ShouldBindJSON(&acc); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
     _, err := h.db.Exec(`
-        UPDATE accounts 
+        UPDATE accounts
         SET name = ?, broker = ?, currency = ?, current_balance = ?, updated_at = CURRENT_TIMESTAMP
         WHERE account_id = ?
     `, acc.Name, acc.Broker, acc.Currency, acc.CurrentBalance, id)
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -112,9 +116,10 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
     c.JSON(http.StatusOK, gin.H{"message": "Account updated successfully"})
 }
 
+// Elimina una cuenta (marcar inactiva)
 func (h *AccountHandler) DeleteAccount(c *gin.Context) {
     id := c.Param("id")
-    
+
     _, err := h.db.Exec("UPDATE accounts SET is_active = 0 WHERE account_id = ?", id)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -122,4 +127,54 @@ func (h *AccountHandler) DeleteAccount(c *gin.Context) {
     }
 
     c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
+}
+
+// Depositar en cuenta
+func (h *AccountHandler) Deposit(c *gin.Context) {
+    id := c.Param("id")
+    var req struct {
+        Amount float64 `json:"amount"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    _, err := h.db.Exec(`
+        UPDATE accounts
+        SET current_balance = current_balance + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE account_id = ? AND is_active = 1
+    `, req.Amount, id)
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Deposit successful"})
+}
+
+// Extraer de cuenta
+func (h *AccountHandler) Withdrawal(c *gin.Context) {
+    id := c.Param("id")
+    var req struct {
+        Amount float64 `json:"amount"`
+    }
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    _, err := h.db.Exec(`
+        UPDATE accounts
+        SET current_balance = current_balance - ?, updated_at = CURRENT_TIMESTAMP
+        WHERE account_id = ? AND is_active = 1 AND current_balance >= ?
+    `, req.Amount, id, req.Amount)
+
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Withdrawal successful"})
 }

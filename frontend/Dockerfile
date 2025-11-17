@@ -3,7 +3,7 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Copy only package files first (better cache layer)
 COPY package*.json ./
 
 # Install dependencies
@@ -17,6 +17,9 @@ RUN npm run build
 
 # Production stage
 FROM nginx:alpine
+
+# Remove default nginx config
+RUN rm -f /etc/nginx/conf.d/default.conf
 
 # Copy built files to nginx
 COPY --from=builder /app/build /usr/share/nginx/html

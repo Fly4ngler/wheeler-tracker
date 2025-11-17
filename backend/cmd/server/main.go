@@ -32,8 +32,18 @@ logger.Fatal("failed to initialize database", zap.Error(err))
 }
 defer db.Close()
 
+// Inicializar servicios
 tradeService := services.NewTradeService(db)
+
+// Inicializar handlers
+tradeHandler := handlers.NewTradeHandler(db.DB)
 tradeImportHandler := handlers.NewTradeImportHandler(tradeService)
+accountHandler := handlers.NewAccountHandler(db.DB)
+positionHandler := handlers.NewPositionHandler(db.DB)
+incomeHandler := handlers.NewIncomeHandler(db.DB)
+wheelHandler := handlers.NewWheelHandler(db.DB)
+apiHandler := handlers.NewAPIHandler(db.DB)
+apiConfigHandler := handlers.NewAPIConfigHandler(db.DB)
 
 router := gin.Default()
 
@@ -47,7 +57,7 @@ AllowCredentials: true,
 MaxAge:           12 * time.Hour,
 }))
 
-// Health check endpoint (required for Docker healthcheck)
+// Health check endpoint
 router.GET("/api/v1/health", func(c *gin.Context) {
 c.JSON(http.StatusOK, gin.H{
 "status":    "ok",
@@ -58,66 +68,58 @@ c.JSON(http.StatusOK, gin.H{
 // API v1 routes
 v1 := router.Group("/api/v1")
 {
-// Trade import route
+// ==================== TRADES ====================
+v1.GET("/trades", tradeHandler.ListTrades)
+v1.GET("/trades/:id", tradeHandler.GetTrade)
+v1.POST("/trades", tradeHandler.CreateTrade)
+v1.PUT("/trades/:id", tradeHandler.UpdateTrade)
+v1.DELETE("/trades/:id", tradeHandler.DeleteTrade)
+v1.POST("/trades/:id/close", tradeHandler.CloseTrade)
 v1.POST("/trades/import", tradeImportHandler.Import)
 
-// Trade routes - stub implementations
-v1.GET("/trades", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"trades": []interface{}{}})
-})
-v1.POST("/trades", func(c *gin.Context) {
-c.JSON(http.StatusCreated, gin.H{"message": "Trade created"})
-})
-v1.PUT("/trades/:id", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"message": "Trade updated"})
-})
-v1.DELETE("/trades/:id", func(c *gin.Context) {
-c.JSON(http.StatusNoContent, gin.H{})
-})
+// ==================== ACCOUNTS ====================
+v1.GET("/accounts", accountHandler.ListAccounts)
+v1.GET("/accounts/:id", accountHandler.GetAccount)
+v1.POST("/accounts", accountHandler.CreateAccount)
+v1.PUT("/accounts/:id", accountHandler.UpdateAccount)
+v1.DELETE("/accounts/:id", accountHandler.DeleteAccount)
+v1.POST("/accounts/:id/deposit", accountHandler.Deposit)
+v1.POST("/accounts/:id/withdrawal", accountHandler.Withdrawal)
 
-// Account routes - stub implementations
-v1.GET("/accounts", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"accounts": []interface{}{}})
-})
-v1.POST("/accounts", func(c *gin.Context) {
-c.JSON(http.StatusCreated, gin.H{"message": "Account created"})
-})
-v1.PUT("/accounts/:id", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"message": "Account updated"})
-})
-v1.DELETE("/accounts/:id", func(c *gin.Context) {
-c.JSON(http.StatusNoContent, gin.H{})
-})
+// ==================== POSITIONS ====================
+v1.GET("/positions", positionHandler.ListPositions)
+v1.GET("/positions/:id", positionHandler.GetPosition)
+v1.POST("/positions", positionHandler.CreatePosition)
+v1.PUT("/positions/:id", positionHandler.UpdatePosition)
+v1.DELETE("/positions/:id", positionHandler.DeletePosition)
+v1.POST("/positions/:id/close", positionHandler.ClosePosition)
 
-// Position routes - stub implementations
-v1.GET("/positions", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"positions": []interface{}{}})
-})
-v1.POST("/positions", func(c *gin.Context) {
-c.JSON(http.StatusCreated, gin.H{"message": "Position created"})
-})
-v1.PUT("/positions/:id", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"message": "Position updated"})
-})
-v1.DELETE("/positions/:id", func(c *gin.Context) {
-c.JSON(http.StatusNoContent, gin.H{})
-})
+// ==================== INCOME ====================
+v1.GET("/income", incomeHandler.ListIncome)
+v1.POST("/income", incomeHandler.CreateIncome)
+v1.DELETE("/income/:id", incomeHandler.DeleteIncome)
 
-// Income routes - stub implementations
-v1.GET("/income", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"income": []interface{}{}})
-})
-v1.POST("/income", func(c *gin.Context) {
-c.JSON(http.StatusCreated, gin.H{"message": "Income recorded"})
-})
+// ==================== WHEELS ====================
+v1.GET("/wheels", wheelHandler.ListWheels)
+v1.GET("/wheels/:id", wheelHandler.GetWheel)
+v1.POST("/wheels", wheelHandler.CreateWheel)
+v1.PUT("/wheels/:id", wheelHandler.UpdateWheel)
 
-// Wheel routes - stub implementations
-v1.GET("/wheels", func(c *gin.Context) {
-c.JSON(http.StatusOK, gin.H{"wheels": []interface{}{}})
-})
-v1.POST("/wheels", func(c *gin.Context) {
-c.JSON(http.StatusCreated, gin.H{"message": "Wheel created"})
-})
+// ==================== ANALYTICS ====================
+v1.GET("/trades/dashboard", tradeHandler.GetDashboard)
+v1.GET("/trades/performance", tradeHandler.GetPerformance)
+
+// ==================== EXTERNAL APIs ====================
+v1.GET("/quote/:symbol", apiHandler.GetQuote)
+v1.GET("/search/:query", apiHandler.SearchSymbol)
+v1.GET("/exchange-rate", apiHandler.GetExchangeRate)
+
+// ==================== API CONFIGURATION ====================
+v1.GET("/apis", apiConfigHandler.ListConfigs)
+v1.GET("/apis/:provider", apiConfigHandler.GetConfig)
+v1.POST("/apis/:provider", apiConfigHandler.CreateOrUpdateConfig)
+v1.DELETE("/apis/:provider", apiConfigHandler.DeleteConfig)
+v1.GET("/apis/:provider/test", apiConfigHandler.TestConfig)
 }
 
 srv := &http.Server{

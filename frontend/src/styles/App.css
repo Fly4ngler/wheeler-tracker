@@ -92,6 +92,12 @@ body {
   border: 1px solid #2d3748;
   border-radius: 12px;
   padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .stat-label {
@@ -132,6 +138,12 @@ body {
 
 .btn-primary:hover {
   background: #2563eb;
+}
+
+.btn-primary:disabled {
+  background: #6b7280;
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .table-container {
@@ -254,6 +266,21 @@ tr:hover td {
   border-color: #3b82f6;
 }
 
+.form-control {
+  width: 100%;
+  padding: 10px 12px;
+  background: #0f1117;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  color: #e5e7eb;
+  font-size: 14px;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
 .form-actions {
   display: flex;
   gap: 12px;
@@ -265,4 +292,74 @@ tr:hover td {
   text-align: center;
   padding: 40px;
   color: #9ca3af;
+}
+
+/* ====== MANAGEMENT PANEL STYLES ====== */
+
+.management-tabs {
+  display: flex;
+  gap: 10px;
+  padding: 20px 0;
+  border-bottom: 2px solid #2d3748;
+  margin-bottom: 30px;
+}
+
+.tab-btn {
+  padding: 12px 24px;
+  background-color: transparent;
+  color: #9ca3af;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.tab-btn:hover {
+  color: #e5e7eb;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.tab-btn.active {
+  color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+}
+
+.tab-content {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.management-content {
+  max-width: 1400px;
+}
+
+.tab-content h2 {
+  color: #e5e7eb;
+  font-size: 24px;
+  margin-bottom: 20px;
+}
+
+.tab-content h3 {
+  color: #e5e7eb;
+  font-size: 18px;
+  margin: 20px 0 15px;
+}
+
+.tab-content h4 {
+  color: #e5e7eb;
+  font-size: 16px;
+  margin: 15px 0 10px;
 }

@@ -1,0 +1,16 @@
+
+# Database files
+data/trades.db
+data/trades.db-shm
+data/trades.db-wal
+
+# Duplicate directory
+wheeler-tracker/
+
+# Dependencies
+node_modules/
+build/
+
+# Environment
+.env
+.env.local
