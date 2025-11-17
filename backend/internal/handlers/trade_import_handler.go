@@ -2,6 +2,7 @@ package handlers
 
 import (
 "encoding/csv"
+"fmt"
 "io"
 "net/http"
 "strconv"
@@ -20,6 +21,7 @@ func NewTradeImportHandler(tradeService *services.TradeService) *TradeImportHand
 return &TradeImportHandler{TradeService: tradeService}
 }
 
+// Import maneja la importación de trades desde CSV
 func (h *TradeImportHandler) Import(c *gin.Context) {
 file, _, err := c.Request.FormFile("file")
 if err != nil {
@@ -37,17 +39,20 @@ c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read CSV headers"})
 return
 }
 
-// Validate headers
-expectedHeaders := []string{"symbol", "trade_type", "contracts", "strike_price", "premium_per_share", "open_date", "expiration_date", "close_date", "close_price", "fees"}
-if len(headers) < len(expectedHeaders) {
-c.JSON(http.StatusBadRequest, gin.H{"error": "CSV headers mismatch"})
+// Validar headers
+requiredHeaders := []string{"account_id", "symbol", "trade_type", "contracts", "strike_price", "premium_per_share", "open_date", "expiration_date"}
+if !validateHeaders(headers, requiredHeaders) {
+c.JSON(http.StatusBadRequest, gin.H{
+"error": fmt.Sprintf("CSV headers mismatch. Required: %v", requiredHeaders),
+})
 return
 }
 
-var imported []models.Trade
-var errors []string
+var trades []models.Trade
+var parseErrors []string
 lineNum := 1
 
+// Parsear todas las líneas
 for {
 lineNum++
 record, err := reader.Read()
@@ -56,80 +61,197 @@ break
 }
 
 if err != nil {
-errors = append(errors, "Line "+strconv.Itoa(lineNum)+": "+err.Error())
+parseErrors = append(parseErrors, fmt.Sprintf("Line %d: %v", lineNum, err))
 continue
 }
 
-trade, err := parseTradeRecord(record)
+trade, err := h.parseTradeRecord(record, headers)
 if err != nil {
-errors = append(errors, "Line "+strconv.Itoa(lineNum)+": "+err.Error())
+parseErrors = append(parseErrors, fmt.Sprintf("Line %d: %v", lineNum, err))
 continue
 }
 
-// TODO: Save trade to database via service
-// err = h.TradeService.SaveTrade(trade)
-// if err != nil {
-// errors = append(errors, "Line "+strconv.Itoa(lineNum)+": failed saving - "+err.Error())
-// continue
-// }
+// Validar datos del trade
+if err := h.TradeService.ValidateTradeData(trade); err != nil {
+parseErrors = append(parseErrors, fmt.Sprintf("Line %d: %v", lineNum, err))
+continue
+}
 
-imported = append(imported, trade)
+trades = append(trades, trade)
+}
+
+// Si no hay trades válidos, retornar error
+if len(trades) == 0 {
+c.JSON(http.StatusBadRequest, gin.H{
+"error":         "No valid trades found in CSV",
+"parse_errors":  parseErrors,
+})
+return
+}
+
+// Guardar trades en transacción
+importedCount, transactionErrors, err := h.TradeService.SaveTradesTransaction(trades)
+if err != nil {
+c.JSON(http.StatusInternalServerError, gin.H{
+"message":           err.Error(),
+"imported_count":    importedCount,
+"transaction_errors": transactionErrors,
+"parse_errors":      parseErrors,
+})
+return
 }
 
 c.JSON(http.StatusOK, gin.H{
-"imported_count": len(imported),
-"errors":         errors,
+"message":           "Trades imported successfully",
+"imported_count":    importedCount,
+"total_attempted":   len(trades),
+"parse_errors":      parseErrors,
+"transaction_errors": transactionErrors,
 })
 }
 
-func parseTradeRecord(record []string) (models.Trade, error) {
+// parseTradeRecord convierte una línea CSV en un modelo Trade
+func (h *TradeImportHandler) parseTradeRecord(record []string, headers []string) (models.Trade, error) {
 var trade models.Trade
+trade.Status = "OPEN"
+trade.CreatedAt = time.Now()
+trade.UpdatedAt = time.Now()
 
-trade.Symbol = record[0]
-trade.TradeType = record[1]
+// Mapear headers a índices
+headerMap := make(map[string]int)
+for i, header := range headers {
+headerMap[header] = i
+}
 
-contracts, err := strconv.Atoi(record[2])
+// Parsear account_id (OBLIGATORIO)
+if idx, ok := headerMap["account_id"]; ok && idx < len(record) {
+accountID, err := strconv.Atoi(record[idx])
 if err != nil {
-return trade, err
+return trade, fmt.Errorf("invalid account_id: %v", err)
+}
+trade.AccountID = accountID
+} else {
+return trade, fmt.Errorf("account_id column not found")
+}
+
+// Parsear symbol (OBLIGATORIO)
+if idx, ok := headerMap["symbol"]; ok && idx < len(record) {
+trade.Symbol = record[idx]
+if trade.Symbol == "" {
+return trade, fmt.Errorf("symbol cannot be empty")
+}
+} else {
+return trade, fmt.Errorf("symbol column not found")
+}
+
+// Parsear trade_type (OBLIGATORIO)
+if idx, ok := headerMap["trade_type"]; ok && idx < len(record) {
+trade.TradeType = record[idx]
+if trade.TradeType == "" {
+return trade, fmt.Errorf("trade_type cannot be empty")
+}
+} else {
+return trade, fmt.Errorf("trade_type column not found")
+}
+
+// Parsear contracts (OBLIGATORIO)
+if idx, ok := headerMap["contracts"]; ok && idx < len(record) {
+contracts, err := strconv.Atoi(record[idx])
+if err != nil {
+return trade, fmt.Errorf("invalid contracts: %v", err)
 }
 trade.Contracts = contracts
+} else {
+return trade, fmt.Errorf("contracts column not found")
+}
 
-strikePrice, err := strconv.ParseFloat(record[3], 64)
+// Parsear strike_price (OBLIGATORIO)
+if idx, ok := headerMap["strike_price"]; ok && idx < len(record) {
+strikePrice, err := strconv.ParseFloat(record[idx], 64)
 if err != nil {
-return trade, err
+return trade, fmt.Errorf("invalid strike_price: %v", err)
 }
 trade.StrikePrice = strikePrice
+} else {
+return trade, fmt.Errorf("strike_price column not found")
+}
 
-premiumPerShare, err := strconv.ParseFloat(record[4], 64)
+// Parsear premium_per_share (OBLIGATORIO)
+if idx, ok := headerMap["premium_per_share"]; ok && idx < len(record) {
+premium, err := strconv.ParseFloat(record[idx], 64)
 if err != nil {
-return trade, err
+return trade, fmt.Errorf("invalid premium_per_share: %v", err)
 }
-trade.PremiumPerShare = premiumPerShare
-
-trade.OpenDate = record[5]
-trade.ExpirationDate = record[6]
-
-if len(record) > 7 && record[7] != "" {
-trade.CloseDate = &record[7]
+trade.PremiumPerShare = premium
+} else {
+return trade, fmt.Errorf("premium_per_share column not found")
 }
 
-if len(record) > 8 && record[8] != "" {
-closePrice, err := strconv.ParseFloat(record[8], 64)
+// Parsear open_date (OBLIGATORIO)
+if idx, ok := headerMap["open_date"]; ok && idx < len(record) {
+trade.OpenDate = record[idx]
+if trade.OpenDate == "" {
+return trade, fmt.Errorf("open_date cannot be empty")
+}
+} else {
+return trade, fmt.Errorf("open_date column not found")
+}
+
+// Parsear expiration_date (OBLIGATORIO)
+if idx, ok := headerMap["expiration_date"]; ok && idx < len(record) {
+trade.ExpirationDate = record[idx]
+if trade.ExpirationDate == "" {
+return trade, fmt.Errorf("expiration_date cannot be empty")
+}
+} else {
+return trade, fmt.Errorf("expiration_date column not found")
+}
+
+// Parsear campos opcionales
+if idx, ok := headerMap["close_date"]; ok && idx < len(record) && record[idx] != "" {
+trade.CloseDate = &record[idx]
+}
+
+if idx, ok := headerMap["close_method"]; ok && idx < len(record) && record[idx] != "" {
+trade.CloseMethod = &record[idx]
+}
+
+if idx, ok := headerMap["close_price"]; ok && idx < len(record) && record[idx] != "" {
+closePrice, err := strconv.ParseFloat(record[idx], 64)
 if err == nil {
 trade.ClosePrice = &closePrice
 }
 }
 
-if len(record) > 9 && record[9] != "" {
-fees, err := strconv.ParseFloat(record[9], 64)
+if idx, ok := headerMap["fees"]; ok && idx < len(record) && record[idx] != "" {
+fees, err := strconv.ParseFloat(record[idx], 64)
 if err == nil {
 trade.Fees = fees
 }
 }
 
-trade.Status = "OPEN"
-trade.CreatedAt = time.Now()
-trade.UpdatedAt = time.Now()
+if idx, ok := headerMap["tags"]; ok && idx < len(record) && record[idx] != "" {
+trade.Tags = &record[idx]
+}
+
+if idx, ok := headerMap["notes"]; ok && idx < len(record) && record[idx] != "" {
+trade.Notes = &record[idx]
+}
 
 return trade, nil
+}
+
+// validateHeaders verifica que todos los headers requeridos estén presentes
+func validateHeaders(headers []string, required []string) bool {
+headerMap := make(map[string]bool)
+for _, h := range headers {
+headerMap[h] = true
+}
+
+for _, req := range required {
+if !headerMap[req] {
+return false
+}
+}
+return true
 }
