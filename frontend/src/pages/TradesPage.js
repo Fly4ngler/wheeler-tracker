@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { getTrades, getDashboard, createTrade, updateTrade, deleteTrade } from '../services/api';
 import CloseTradeModal from './CloseTradeModal';
+import { ActiveAccountContext } from '../context/ActiveAccountContext';
 
-function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
+function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAccountId }) {
   const [formData, setFormData] = useState({
-    account_id: 1,
+    account_id: activeAccountId || 1,
     symbol: '',
     trade_type: 'CSP',
     contracts: 1,
@@ -12,7 +13,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
     premium_per_share: '',
     open_date: new Date().toISOString().split('T')[0],
     expiration_date: '',
-    fees: ''
+    fees: '0.65'
   });
 
   useEffect(() => {
@@ -30,7 +31,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
       });
     } else {
       setFormData({
-        account_id: 1,
+        account_id: activeAccountId || 1,
         symbol: '',
         trade_type: 'CSP',
         contracts: 1,
@@ -38,10 +39,10 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
         premium_per_share: '',
         open_date: new Date().toISOString().split('T')[0],
         expiration_date: '',
-        fees: ''
+        fees: '0.65'
       });
     }
-  }, [editingTrade, isOpen]);
+  }, [editingTrade, isOpen, activeAccountId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -72,104 +73,95 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{editingTrade ? 'Edit Trade' : 'Add New Trade'}</h2>
+        <h2>{editingTrade ? 'Editar Trade' : 'Nuevo Trade'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Type</label>
-            <select value={formData.trade_type} onChange={(e) => setFormData({...formData, trade_type: e.target.value})}>
-              <option value="CSP">Cash-Secured Put</option>
-              <option value="CC">Covered Call</option>
-              <option value="PUT">Put</option>
-              <option value="CALL">Call</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Stock Symbol</label>
+            <label>Símbolo *</label>
             <input
               type="text"
               value={formData.symbol}
-              onChange={(e) => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
-              placeholder="e.g., AAPL, MSFT, TSLA"
+              onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
               required
+              placeholder="AAPL"
             />
           </div>
-
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
-            <div className="form-group">
-              <label>Trade Open Date</label>
-              <input
-                type="date"
-                value={formData.open_date}
-                onChange={(e) => setFormData({...formData, open_date: e.target.value})}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Expiration Date</label>
-              <input
-                type="date"
-                value={formData.expiration_date}
-                onChange={(e) => setFormData({...formData, expiration_date: e.target.value})}
-                required
-              />
-            </div>
+          <div className="form-group">
+            <label>Tipo *</label>
+            <select
+              value={formData.trade_type}
+              onChange={(e) => setFormData({ ...formData, trade_type: e.target.value })}
+            >
+              <option value="CSP">CSP (Cash Secured Put)</option>
+              <option value="CC">CC (Covered Call)</option>
+            </select>
           </div>
-
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
             <div className="form-group">
-              <label>Number of Contracts</label>
+              <label>Contratos *</label>
               <input
                 type="number"
                 value={formData.contracts}
-                onChange={(e) => setFormData({...formData, contracts: parseInt(e.target.value)})}
-                min="1"
+                onChange={(e) => setFormData({ ...formData, contracts: e.target.value })}
                 required
+                min="1"
               />
             </div>
-
             <div className="form-group">
-              <label>Strike Price ($)</label>
+              <label>Strike *</label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.strike_price}
-                onChange={(e) => setFormData({...formData, strike_price: e.target.value})}
-                placeholder="e.g., 150.00"
+                onChange={(e) => setFormData({ ...formData, strike_price: e.target.value })}
+                required
+                placeholder="100.00"
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Prima por Acción *</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.premium_per_share}
+              onChange={(e) => setFormData({ ...formData, premium_per_share: e.target.value })}
+              required
+              placeholder="1.50"
+            />
+          </div>
+          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
+            <div className="form-group">
+              <label>Fecha Apertura *</label>
+              <input
+                type="date"
+                value={formData.open_date}
+                onChange={(e) => setFormData({ ...formData, open_date: e.target.value })}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>Fecha Expiración *</label>
+              <input
+                type="date"
+                value={formData.expiration_date}
+                onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
                 required
               />
             </div>
           </div>
-
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
-            <div className="form-group">
-              <label>Premium (per share)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.premium_per_share}
-                onChange={(e) => setFormData({...formData, premium_per_share: e.target.value})}
-                placeholder="e.g., 2.50"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Fees ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={formData.fees}
-                onChange={(e) => setFormData({...formData, fees: e.target.value})}
-                placeholder="e.g., 0.65"
-              />
-            </div>
+          <div className="form-group">
+            <label>Comisiones</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.fees}
+              onChange={(e) => setFormData({ ...formData, fees: e.target.value })}
+              placeholder="0.65"
+            />
           </div>
-
           <div className="form-actions">
-            <button type="button" className="btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">{editingTrade ? 'Update Trade' : 'Add Trade'}</button>
+            <button type="button" className="btn" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn btn-primary">{editingTrade ? 'Actualizar' : 'Crear'}</button>
           </div>
         </form>
       </div>
@@ -178,6 +170,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
 }
 
 function TradesPage() {
+  const { activeAccountId, loadingActiveAccount } = useContext(ActiveAccountContext);
   const [trades, setTrades] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -187,12 +180,14 @@ function TradesPage() {
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
+    if (loadingActiveAccount) return;
     try {
+      setLoading(true);
       const [tradesRes, dashboardRes] = await Promise.all([
-        getTrades({ status: 'OPEN' }),
-        getDashboard()
+        getTrades({ status: 'OPEN', account_id: activeAccountId }),
+        getDashboard(activeAccountId)
       ]);
-      setTrades(tradesRes.data);
+      setTrades(tradesRes.data || []);
       setDashboard(dashboardRes.data);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -203,146 +198,129 @@ function TradesPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeAccountId, loadingActiveAccount]);
 
-  const handleCloseTrade = (trade) => {
-    setSelectedTrade(trade);
-    setCloseModalOpen(true);
-  };
-
-  const handleEditTrade = (trade) => {
+  const handleEdit = (trade) => {
     setEditingTrade(trade);
     setIsModalOpen(true);
   };
 
+  const handleClose = (trade) => {
+    setSelectedTrade(trade);
+    setCloseModalOpen(true);
+  };
+
   const handleDeleteTrade = async (tradeId) => {
-    if (window.confirm('Are you sure you want to delete this trade?')) {
-      try {
-        await deleteTrade(tradeId);
-        loadData();
-      } catch (error) {
-        alert('Error deleting trade: ' + error.message);
-      }
+    if (!window.confirm('¿Eliminar este trade?')) return;
+    try {
+      await deleteTrade(tradeId);
+      loadData();
+    } catch (error) {
+      alert('Error eliminando trade: ' + error.message);
     }
-  };
-
-  const handleTradeUpdated = () => {
-    setEditingTrade(null);
-    loadData();
-  };
-
-  const calculateNetPremium = (trade) => {
-    return ((trade.premium_per_share * trade.contracts * 100) - trade.fees).toFixed(2);
   };
 
   const calculateDTE = (expirationDate) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const expDate = new Date(expirationDate);
     expDate.setHours(0, 0, 0, 0);
-
     const diffTime = expDate - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
     return diffDays;
   };
-
-  if (loading) return <div className="loading">Loading...</div>;
 
   return (
     <div>
       <div className="page-header">
         <h1>Trades</h1>
-        <p>Track your options trades from the wheel strategy</p>
+        <p>Gestión de operaciones abiertas</p>
       </div>
 
       {dashboard && (
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-label">Open Trades</div>
-            <div className="stat-value">{dashboard.open_trades}</div>
+            <div className="stat-label">Trades Abiertos</div>
+            <div className="stat-value">{dashboard.open_trades || 0}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Open Trades Net Premium</div>
-            <div className="stat-value positive">${dashboard.open_trades_net_premium.toFixed(2)}</div>
+            <div className="stat-label">Capital Comprometido</div>
+            <div className="stat-value">${(dashboard.capital_at_risk || 0).toFixed(2)}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Premium Collected</div>
-            <div className="stat-value positive">${dashboard.premium_collected.toFixed(2)}</div>
+            <div className="stat-label">Prima Total Cobrada</div>
+            <div className="stat-value positive">${(dashboard.total_premium || 0).toFixed(2)}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">% ITM</div>
-            <div className="stat-value">0.0%</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Average Yield</div>
-            <div className="stat-value positive">{dashboard.average_yield.toFixed(2)}%</div>
+            <div className="stat-label">Win Rate</div>
+            <div className="stat-value">{(dashboard.win_rate || 0).toFixed(1)}%</div>
           </div>
         </div>
       )}
 
-      <div style={{marginBottom: '20px'}}>
-        <button className="btn btn-primary" onClick={() => {
-          setEditingTrade(null);
-          setIsModalOpen(true);
-        }}>
-          Add New Trade
-        </button>
-      </div>
+      <button className="btn btn-primary" onClick={() => { setEditingTrade(null); setIsModalOpen(true); }} style={{marginBottom: '20px'}}>
+        Nuevo Trade
+      </button>
 
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Type</th>
-              <th>Contracts</th>
-              <th>Strike</th>
-              <th>Premium</th>
-              <th>Open Date</th>
-              <th>Expiration</th>
-              <th>DTE</th>
-              <th>Net Premium</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.length === 0 ? (
+      {loading && <div className="loading">Cargando trades...</div>}
+
+      {!loading && (
+        <div className="table-container">
+          <table>
+            <thead>
               <tr>
-                <td colSpan="10" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
-                  No open trades. Click "Add New Trade" to get started.
-                </td>
+                <th>Símbolo</th>
+                <th>Tipo</th>
+                <th>Strike</th>
+                <th>Contratos</th>
+                <th>Prima</th>
+                <th>Fecha Apertura</th>
+                <th>Expiración</th>
+                <th>DTE</th>
+                <th>Acciones</th>
               </tr>
-            ) : (
-              trades.map((trade) => (
-                <tr key={trade.trade_id}>
-                  <td><strong>{trade.symbol}</strong></td>
-                  <td><span className={`badge badge-${trade.trade_type.toLowerCase()}`}>{trade.trade_type}</span></td>
-                  <td>{trade.contracts}</td>
-                  <td>${trade.strike_price}</td>
-                  <td>${trade.premium_per_share}</td>
-                  <td>{trade.open_date.split('T')[0]}</td>
-                  <td>{trade.expiration_date.split('T')[0]}</td>
-                  <td style={{fontWeight: '600', color: calculateDTE(trade.expiration_date) <= 7 ? '#ff6b6b' : '#32b8c6'}}>{calculateDTE(trade.expiration_date)}</td>
-                  <td className="positive">${calculateNetPremium(trade)}</td>
-                  <td style={{display: 'flex', gap: '6px', alignItems: 'center'}}>
-                    <button className="btn" onClick={() => handleCloseTrade(trade)} title="Close Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
-                      Close
-                    </button>
-                    <button className="btn" onClick={() => handleEditTrade(trade)} title="Edit Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
-                      Edit
-                    </button>
-                    <button className="btn" onClick={() => handleDeleteTrade(trade.trade_id)} title="Delete Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
-                      Delete
-                    </button>
-                  </td>
+            </thead>
+            <tbody>
+              {trades.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{textAlign: 'center'}}>No hay trades abiertos</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                trades.map((trade) => {
+                  const dte = calculateDTE(trade.expiration_date);
+                  return (
+                    <tr key={trade.trade_id}>
+                      <td style={{fontWeight: '600'}}>{trade.symbol}</td>
+                      <td>
+                        <span className={`badge ${trade.trade_type === 'CSP' ? 'badge-csp' : 'badge-cc'}`}>
+                          {trade.trade_type}
+                        </span>
+                      </td>
+                      <td>${parseFloat(trade.strike_price).toFixed(2)}</td>
+                      <td>{trade.contracts}</td>
+                      <td style={{color: '#10b981', fontWeight: '500'}}>${parseFloat(trade.premium_per_share).toFixed(2)}</td>
+                      <td>{trade.open_date.split('T')[0]}</td>
+                      <td>{trade.expiration_date.split('T')[0]}</td>
+                      <td>
+                        <span style={{color: dte <= 7 ? '#ef4444' : '#9ca3af', fontWeight: '500'}}>
+                          {dte}d
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{display: 'flex', gap: '4px'}}>
+                          <button className="btn" onClick={() => handleEdit(trade)} style={{fontSize: '12px', padding: '6px 10px'}}>Editar</button>
+                          <button className="btn btn-primary" onClick={() => handleClose(trade)} style={{fontSize: '12px', padding: '6px 10px'}}>Cerrar</button>
+                          <button className="btn" onClick={() => handleDeleteTrade(trade.trade_id)} style={{fontSize: '12px', padding: '6px 10px', color: '#ef4444'}}>Eliminar</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <AddTradeModal
         isOpen={isModalOpen}
@@ -352,19 +330,18 @@ function TradesPage() {
         }}
         onTradeAdded={loadData}
         editingTrade={editingTrade}
+        activeAccountId={activeAccountId}
       />
 
-      {selectedTrade && (
-        <CloseTradeModal
-          isOpen={closeModalOpen}
-          onClose={() => {
-            setCloseModalOpen(false);
-            setSelectedTrade(null);
-          }}
-          trade={selectedTrade}
-          onTradeUpdated={handleTradeUpdated}
-        />
-      )}
+      <CloseTradeModal
+        isOpen={closeModalOpen}
+        onClose={() => {
+          setCloseModalOpen(false);
+          setSelectedTrade(null);
+        }}
+        trade={selectedTrade}
+        onTradeUpdated={loadData}
+      />
     </div>
   );
 }

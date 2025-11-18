@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { ActiveAccountContext } from '../../context/ActiveAccountContext';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF'];
 
@@ -10,8 +11,10 @@ export default function AccountsTab() {
   const [showTransactionForm, setShowTransactionForm] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [newAccount, setNewAccount] = useState({ name: '', broker: '', currency: 'USD', initialBalance: '' });
-  const [transactionData, setTransactionData] = useState({ amount: '' });
   const [editData, setEditData] = useState({ name: '', broker: '', currency: 'USD', current_balance: '' });
+  const [transactionData, setTransactionData] = useState({ amount: '', notes: '' });
+
+  const { activeAccountId, setActiveAccountId } = useContext(ActiveAccountContext);
 
   useEffect(() => {
     loadAccounts();
@@ -21,10 +24,14 @@ export default function AccountsTab() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/v1/accounts');
+      const response = await fetch('/api/v1/accounts/all');
       if (!response.ok) throw new Error('Error cargando cuentas');
       const data = await response.json();
       setAccounts(data || []);
+      if (!activeAccountId && data.length > 0) {
+        const active = data.find(acc => acc.is_active === 1);
+        setActiveAccountId(active ? active.account_id : data[0].account_id);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -32,27 +39,80 @@ export default function AccountsTab() {
     }
   };
 
-  const handleNewAccountChange = (e) => {
-    const { name, value } = e.target;
-    setNewAccount((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleTransactionChange = (e) => {
-    const { value } = e.target;
-    setTransactionData({ amount: value });
-  };
-
-  const createAccount = async (e) => {
-    e.preventDefault();
-    if (!newAccount.name.trim()) {
-      setError('El nombre es requerido');
-      return;
+  const activateAccount = async (accountId) => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/v1/accounts/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId }),
+      });
+      if (!response.ok) throw new Error('Error activando cuenta');
+      setActiveAccountId(accountId);
+      await loadAccounts();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleDelete = async (accountId) => {
+    if (!window.confirm("¿Seguro que deseas eliminar esta cuenta? Esta operación no se puede deshacer.")) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/v1/accounts/${accountId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error('Error eliminando cuenta');
+      if (activeAccountId === accountId) setActiveAccountId(null);
+      await loadAccounts();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditInit = (acc) => {
+    setEditingId(acc.account_id);
+    setEditData({
+      name: acc.name,
+      broker: acc.broker || '',
+      currency: acc.currency,
+      current_balance: acc.current_balance
+    });
+  };
+
+  const handleEditCancel = () => {
+    setEditingId(null);
+    setEditData({ name: '', broker: '', currency: 'USD', current_balance: '' });
+  };
+
+  const handleEditSubmit = async (acc) => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/v1/accounts/${acc.account_id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...editData,
+          current_balance: parseFloat(editData.current_balance)
+        }),
+      });
+      if (!response.ok) throw new Error('Error actualizando cuenta');
+      setEditingId(null);
+      await loadAccounts();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewAccountSubmit = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError('');
     try {
@@ -61,16 +121,16 @@ export default function AccountsTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newAccount.name,
-          broker: newAccount.broker || 'N/A',
+          broker: newAccount.broker,
           currency: newAccount.currency,
-          initial_balance: parseFloat(newAccount.initialBalance) || 0,
-          current_balance: parseFloat(newAccount.initialBalance) || 0,
+          initial_balance: parseFloat(newAccount.initialBalance),
+          current_balance: parseFloat(newAccount.initialBalance)
         }),
       });
-      if (!response.ok) throw new Error('Error creando la cuenta');
-      await loadAccounts();
+      if (!response.ok) throw new Error('Error creando cuenta');
       setShowNewForm(false);
       setNewAccount({ name: '', broker: '', currency: 'USD', initialBalance: '' });
+      await loadAccounts();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -78,113 +138,28 @@ export default function AccountsTab() {
     }
   };
 
-  const updateAccount = async (e) => {
-    e.preventDefault();
-    if (!editData.name.trim()) {
-      setError('El nombre es requerido');
-      return;
-    }
+  const handleTransactionSubmit = async (type, acc) => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/accounts/${editingId}`, {
-        method: 'PUT',
+      const endpoint = `/api/v1/accounts/${acc.account_id}/${type === "deposit" ? "deposit" : "withdrawal"}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: editData.name,
-          broker: editData.broker || 'N/A',
-          currency: editData.currency,
-          current_balance: parseFloat(editData.current_balance) || 0,
+          amount: parseFloat(transactionData.amount),
+          notes: transactionData.notes
         }),
       });
-      if (!response.ok) throw new Error('Error actualizando la cuenta');
-      await loadAccounts();
-      setEditingId(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deposit = async (accountId, e) => {
-    e.preventDefault();
-    const amount = parseFloat(transactionData.amount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Cantidad inválida');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/v1/accounts/${accountId}/deposit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
-      });
-      if (!response.ok) throw new Error('Error realizando depósito');
-      await loadAccounts();
+      if (!response.ok) throw new Error('Error realizando operación');
       setShowTransactionForm(null);
-      setTransactionData({ amount: '' });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const withdraw = async (accountId, e) => {
-    e.preventDefault();
-    const amount = parseFloat(transactionData.amount);
-    if (isNaN(amount) || amount <= 0) {
-      setError('Cantidad inválida');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/v1/accounts/${accountId}/withdrawal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
-      });
-      if (!response.ok) throw new Error('Error realizando extracción');
-      await loadAccounts();
-      setShowTransactionForm(null);
-      setTransactionData({ amount: '' });
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteAccount = async (accountId) => {
-    if (!window.confirm('¿Está seguro de que desea eliminar esta cuenta?')) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/v1/accounts/${accountId}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Error eliminando la cuenta');
+      setTransactionData({ amount: '', notes: '' });
       await loadAccounts();
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const startEdit = (account) => {
-    setEditData({
-      name: account.name,
-      broker: account.broker || '',
-      currency: account.currency,
-      current_balance: account.current_balance?.toString() || '0',
-    });
-    setEditingId(account.account_id);
-    setError('');
   };
 
   return (
@@ -192,174 +167,179 @@ export default function AccountsTab() {
       <h2 style={{ marginBottom: '20px' }}>Administrar Cuentas</h2>
       {error && (
         <div style={{ color: '#fca5a5', background: '#7f1d1d', padding: '12px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #dc2626' }}>
-           {error}
+          {error}
         </div>
       )}
       {loading && <div className="loading">Cargando...</div>}
+
       <button className="btn btn-primary" onClick={() => setShowNewForm(!showNewForm)} style={{ marginBottom: '20px' }}>
-        {showNewForm ? 'Cancelar' : ' Nueva Cuenta'}
+        {showNewForm ? 'Cancelar' : 'Nueva Cuenta'}
       </button>
 
       {showNewForm && (
-        <form onSubmit={createAccount} className="stat-card" style={{ marginBottom: '30px' }}>
-          <div className="form-group">
-            <label>Nombre *</label>
-            <input
-              type="text"
-              name="name"
-              placeholder="Ejemplo: IBKR principal"
-              value={newAccount.name}
-              onChange={handleNewAccountChange}
-              required
-            />
+        <div className="modal-overlay" onClick={() => setShowNewForm(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Nueva Cuenta</h2>
+            <form onSubmit={handleNewAccountSubmit}>
+              <div className="form-group">
+                <label>Nombre *</label>
+                <input
+                  type="text"
+                  placeholder="Nombre de la cuenta"
+                  required
+                  value={newAccount.name}
+                  onChange={e => setNewAccount({ ...newAccount, name: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Broker</label>
+                <input
+                  type="text"
+                  placeholder="Broker"
+                  value={newAccount.broker}
+                  onChange={e => setNewAccount({ ...newAccount, broker: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Moneda *</label>
+                <select
+                  value={newAccount.currency}
+                  onChange={e => setNewAccount({ ...newAccount, currency: e.target.value })}
+                >
+                  {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Saldo Inicial *</label>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  required
+                  value={newAccount.initialBalance}
+                  onChange={e => setNewAccount({ ...newAccount, initialBalance: e.target.value })}
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn" onClick={() => setShowNewForm(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Crear Cuenta</button>
+              </div>
+            </form>
           </div>
-          <div className="form-group">
-            <label>Broker</label>
-            <input
-              type="text"
-              name="broker"
-              placeholder="Ejemplo: Interactive Brokers"
-              value={newAccount.broker}
-              onChange={handleNewAccountChange}
-            />
-          </div>
-          <div className="form-group">
-            <label>Moneda</label>
-            <select name="currency" value={newAccount.currency} onChange={handleNewAccountChange}>
-              {CURRENCIES.map((cur) => (
-                <option key={cur} value={cur}>{cur}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Saldo inicial</label>
-            <input
-              type="number"
-              name="initialBalance"
-              min="0"
-              step="0.01"
-              placeholder="Monto inicial"
-              value={newAccount.initialBalance}
-              onChange={handleNewAccountChange}
-            />
-          </div>
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary">Guardar</button>
-          </div>
-        </form>
+        </div>
       )}
 
       <div className="table-container">
         <table>
           <thead>
             <tr>
+              <th>ID</th>
               <th>Nombre</th>
               <th>Broker</th>
               <th>Moneda</th>
               <th>Saldo Actual</th>
+              <th>Activo</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {accounts.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center' }}>No hay cuentas registradas.</td>
+                <td colSpan={7} style={{ textAlign: 'center' }}>
+                  No hay cuentas registradas.
+                </td>
               </tr>
             ) : (
-              accounts.map((acc) => (
+              accounts.map((acc) =>
                 editingId === acc.account_id ? (
                   <tr key={acc.account_id}>
-                    <td colSpan={5}>
-                      <form onSubmit={updateAccount} style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', alignItems: 'end' }}>
-                        <input
-                          type="text"
-                          name="name"
-                          placeholder="Nombre"
-                          value={editData.name}
-                          onChange={handleEditChange}
-                          required
-                        />
-                        <input
-                          type="text"
-                          name="broker"
-                          placeholder="Broker"
-                          value={editData.broker}
-                          onChange={handleEditChange}
-                        />
-                        <select name="currency" value={editData.currency} onChange={handleEditChange}>
-                          {CURRENCIES.map((cur) => (
-                            <option key={cur} value={cur}>{cur}</option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '5px' }}>
-                          <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar</button>
-                          <button type="button" onClick={() => setEditingId(null)} style={{ flex: 1, background: '#2d3748', border: 'none', borderRadius: '6px', color: '#e5e7eb', cursor: 'pointer' }}>Cancelar</button>
-                        </div>
-                      </form>
+                    <td>{acc.account_id}</td>
+                    <td>
+                      <input className="form-control" type="text" value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+                    </td>
+                    <td>
+                      <input className="form-control" type="text" value={editData.broker} onChange={e => setEditData({ ...editData, broker: e.target.value })} />
+                    </td>
+                    <td>
+                      <select className="form-control" value={editData.currency} onChange={e => setEditData({ ...editData, currency: e.target.value })}>
+                        {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input className="form-control" type="number" value={editData.current_balance} step="0.01" onChange={e => setEditData({ ...editData, current_balance: e.target.value })} />
+                    </td>
+                    <td></td>
+                    <td style={{display: 'flex', gap: '4px'}}>
+                      <button className="btn btn-primary" onClick={() => handleEditSubmit(acc)} style={{fontSize: '12px', padding: '6px 10px'}}>Guardar</button>
+                      <button className="btn" onClick={handleEditCancel} style={{fontSize: '12px', padding: '6px 10px'}}>Cancelar</button>
                     </td>
                   </tr>
                 ) : (
                   <tr key={acc.account_id}>
+                    <td>{acc.account_id}</td>
                     <td>{acc.name}</td>
                     <td>{acc.broker || 'N/A'}</td>
                     <td>{acc.currency}</td>
-                    <td>{acc.current_balance?.toFixed(2) || '0.00'}</td>
+                    <td>${acc.current_balance?.toFixed(2) || '0.00'}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                        <button
-                          onClick={() => setShowTransactionForm(acc.account_id === showTransactionForm ? null : acc.account_id)}
-                          style={{ padding: '5px 10px', fontSize: '12px', background: '#2d3748', color: '#10b981', border: '1px solid #10b981', borderRadius: '4px', cursor: 'pointer' }}
-                        >
-                           Transacción
-                        </button>
-                        <button
-                          onClick={() => startEdit(acc)}
-                          style={{ padding: '5px 10px', fontSize: '12px', background: '#2d3748', color: '#e5e7eb', border: '1px solid #4a5568', borderRadius: '4px', cursor: 'pointer' }}
-                        >
-                           Editar
-                        </button>
-                        <button
-                          onClick={() => deleteAccount(acc.account_id)}
-                          style={{ padding: '5px 10px', fontSize: '12px', background: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626', borderRadius: '4px', cursor: 'pointer' }}
-                        >
-                           Eliminar
-                        </button>
+                      <input
+                        type="radio"
+                        name="activeAccount"
+                        checked={activeAccountId === acc.account_id}
+                        onChange={() => activateAccount(acc.account_id)}
+                      />
+                    </td>
+                    <td>
+                      <div style={{display: 'flex', gap: '4px', flexWrap: 'wrap'}}>
+                        <button className="btn" onClick={() => setShowTransactionForm({ type: 'deposit', account: acc })} style={{fontSize: '12px', padding: '6px 10px'}}>Depositar</button>
+                        <button className="btn" onClick={() => setShowTransactionForm({ type: 'withdraw', account: acc })} style={{fontSize: '12px', padding: '6px 10px'}}>Retirar</button>
+                        <button className="btn" onClick={() => handleEditInit(acc)} style={{fontSize: '12px', padding: '6px 10px'}}>Editar</button>
+                        <button className="btn" onClick={() => handleDelete(acc.account_id)} style={{fontSize: '12px', padding: '6px 10px', color: '#ef4444'}}>Eliminar</button>
                       </div>
-                      {showTransactionForm === acc.account_id && (
-                        <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#2d3748', borderRadius: '4px' }}>
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            placeholder="Cantidad"
-                            value={transactionData.amount}
-                            onChange={handleTransactionChange}
-                            style={{ width: '100%', marginBottom: '8px', padding: '6px', borderRadius: '4px', border: '1px solid #4a5568', backgroundColor: '#1a1d29', color: '#e5e7eb' }}
-                          />
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <button
-                              onClick={(e) => deposit(acc.account_id, e)}
-                              style={{ flex: 1, padding: '6px', background: '#10b981', color: '#1a1d29', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                            >
-                              Depositar
-                            </button>
-                            <button
-                              onClick={(e) => withdraw(acc.account_id, e)}
-                              style={{ flex: 1, padding: '6px', background: '#f59e0b', color: '#1a1d29', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}
-                            >
-                              Extraer
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </td>
                   </tr>
                 )
-              ))
+              )
             )}
           </tbody>
         </table>
       </div>
+
+      {showTransactionForm && (
+        <div className="modal-overlay" onClick={() => setShowTransactionForm(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{showTransactionForm.type === 'deposit' ? 'Depositar' : 'Retirar'} - {showTransactionForm.account.name}</h2>
+            <form onSubmit={e => {e.preventDefault(); handleTransactionSubmit(showTransactionForm.type, showTransactionForm.account);}}>
+              <div className="form-group">
+                <label>Monto *</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0.01"
+                  value={transactionData.amount}
+                  onChange={e => setTransactionData({ ...transactionData, amount: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Notas</label>
+                <textarea
+                  placeholder="Notas opcionales"
+                  value={transactionData.notes}
+                  onChange={e => setTransactionData({ ...transactionData, notes: e.target.value })}
+                  rows="3"
+                />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn" onClick={() => setShowTransactionForm(null)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">{showTransactionForm.type === 'deposit' ? 'Depositar' : 'Retirar'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

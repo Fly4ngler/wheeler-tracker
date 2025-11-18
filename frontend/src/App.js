@@ -7,17 +7,16 @@ import WheelsPage from './pages/WheelsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import TickerPage from './pages/TickerPage';
 import ManagementPage from './pages/ManagementPage';
+import { ActiveAccountProvider } from './context/ActiveAccountContext';
 
 function Sidebar() {
   const location = useLocation();
 
-  const isActive = (path) => location.pathname === path ? 'active' : '';
+  const isActive = (path) => (location.pathname === path ? 'active' : '');
 
   return (
     <div className="sidebar">
-      <div className="logo">
-         Options Wheel Tracker
-      </div>
+      <div className="logo">Options Wheel Tracker</div>
 
       <Link to="/trades" className={`nav-item ${isActive('/trades')}`}>
         <span></span> Trades
@@ -48,22 +47,24 @@ function Sidebar() {
 
 function App() {
   return (
-    <Router>
-      <div className="app">
-        <Sidebar />
-        <div className="main-content">
-          <Routes>
-            <Route path="/" element={<TradesPage />} />
-            <Route path="/trades" element={<TradesPage />} />
-            <Route path="/positions" element={<PositionsPage />} />
-            <Route path="/wheels" element={<WheelsPage />} />
-            <Route path="/ticker" element={<TickerPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/management" element={<ManagementPage />} />
-          </Routes>
+    <ActiveAccountProvider>
+      <Router>
+        <div className="app">
+          <Sidebar />
+          <div className="main-content">
+            <Routes>
+              <Route path="/" element={<TradesPage />} />
+              <Route path="/trades" element={<TradesPage />} />
+              <Route path="/positions" element={<PositionsPage />} />
+              <Route path="/wheels" element={<WheelsPage />} />
+              <Route path="/ticker" element={<TickerPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
+              <Route path="/management" element={<ManagementPage />} />
+            </Routes>
+          </div>
         </div>
-      </div>
-    </Router>
+      </Router>
+    </ActiveAccountProvider>
   );
 }
 

@@ -1,7 +1,11 @@
 package handlers
 
 import (
+    "bytes"
     "database/sql"
+    "fmt"
+    "io/ioutil"
+    "log"
     "net/http"
 
     "github.com/gin-gonic/gin"
@@ -16,9 +20,28 @@ func NewTradeHandler(db *sql.DB) *TradeHandler {
     return &TradeHandler{db: db}
 }
 
+// Obtener ID cuenta activa
+func (h *TradeHandler) getActiveAccountID() (int, error) {
+    var accountID int
+    err := h.db.QueryRow("SELECT account_id FROM accounts WHERE is_active = 1 LIMIT 1").Scan(&accountID)
+    if err != nil {
+        return 0, err
+    }
+    return accountID, nil
+}
+
 func (h *TradeHandler) ListTrades(c *gin.Context) {
     status := c.DefaultQuery("status", "OPEN")
     accountID := c.Query("account_id")
+
+    if accountID == "" {
+        activeID, err := h.getActiveAccountID()
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "No active account found"})
+            return
+        }
+        accountID = fmt.Sprintf("%d", activeID)
+    }
 
     query := `
         SELECT trade_id, account_id, symbol, trade_type, contracts, strike_price,
@@ -86,8 +109,67 @@ func (h *TradeHandler) GetTrade(c *gin.Context) {
 
 func (h *TradeHandler) CreateTrade(c *gin.Context) {
     var t models.Trade
+
+    bodyBytes, err := c.GetRawData()
+    if err == nil {
+        log.Printf("Received trade create payload (raw): %s\n", string(bodyBytes))
+        c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+    }
+
     if err := c.ShouldBindJSON(&t); err != nil {
+        log.Printf("Binding JSON error: %v\n", err)
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    // Validaciones explícitas
+    if t.Symbol == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Symbol is required and must be non-empty"})
+        return
+    }
+    for _, r := range t.Symbol {
+        if r < 'A' || r > 'Z' {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "Symbol must contain only uppercase letters (A-Z)"})
+            return
+        }
+    }
+    if t.Contracts <= 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Contracts must be a positive integer"})
+        return
+    }
+    if t.StrikePrice <= 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Strike price must be positive"})
+        return
+    }
+    if t.PremiumPerShare < 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Premium per share must be zero or positive"})
+        return
+    }
+    if t.OpenDate == "" || t.ExpirationDate == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Open date and expiration date are required"})
+        return
+    }
+    if t.ExpirationDate < t.OpenDate {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Expiration date must be equal or after open date"})
+        return
+    }
+
+    if t.AccountID == 0 {
+        activeID, err := h.getActiveAccountID()
+        if err != nil {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "No active account found"})
+            return
+        }
+        t.AccountID = activeID
+    }
+
+    var isActive int
+    err = h.db.QueryRow("SELECT is_active FROM accounts WHERE account_id = ?", t.AccountID).Scan(&isActive)
+    if err == sql.ErrNoRows || isActive != 1 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Associated account does not exist or is not active"})
+        return
+    } else if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
 
@@ -99,6 +181,7 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
         t.PremiumPerShare, t.OpenDate, t.ExpirationDate, t.Fees, t.Tags, t.Notes)
 
     if err != nil {
+        log.Printf("DB insert error: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }

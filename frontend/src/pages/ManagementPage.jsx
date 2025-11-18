@@ -6,7 +6,7 @@ import APIsTab from './ManagementTabs/APIsTab';
 import '../styles/App.css';
 
 export default function ManagementPage() {
-  const [activeTab, setActiveTab] = useState('csv');
+  const [activeTab, setActiveTab] = useState('accounts'); // Cambiado a 'accounts'
 
   return (
     <div>
