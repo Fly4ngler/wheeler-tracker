@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { getTrades, createTrade, closeTrade, getDashboard } from '../services/api';
+import { getTrades, getDashboard, createTrade, updateTrade, deleteTrade } from '../services/api';
+import CloseTradeModal from './CloseTradeModal';
 
-function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
+function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade }) {
   const [formData, setFormData] = useState({
     account_id: 1,
     symbol: '',
@@ -11,15 +12,23 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
     premium_per_share: '',
     open_date: new Date().toISOString().split('T')[0],
     expiration_date: '',
-    fees: 0.65
+    fees: ''
   });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await createTrade(formData);
-      onTradeAdded();
-      onClose();
+  useEffect(() => {
+    if (editingTrade) {
+      setFormData({
+        account_id: editingTrade.account_id,
+        symbol: editingTrade.symbol,
+        trade_type: editingTrade.trade_type,
+        contracts: editingTrade.contracts,
+        strike_price: editingTrade.strike_price.toString(),
+        premium_per_share: editingTrade.premium_per_share.toString(),
+        open_date: editingTrade.open_date.split('T')[0],
+        expiration_date: editingTrade.expiration_date.split('T')[0],
+        fees: editingTrade.fees.toString()
+      });
+    } else {
       setFormData({
         account_id: 1,
         symbol: '',
@@ -29,10 +38,32 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
         premium_per_share: '',
         open_date: new Date().toISOString().split('T')[0],
         expiration_date: '',
-        fees: 0.65
+        fees: ''
       });
+    }
+  }, [editingTrade, isOpen]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...formData,
+        strike_price: parseFloat(formData.strike_price),
+        premium_per_share: parseFloat(formData.premium_per_share),
+        contracts: parseInt(formData.contracts),
+        fees: parseFloat(formData.fees) || 0
+      };
+
+      if (editingTrade) {
+        await updateTrade(editingTrade.trade_id, payload);
+      } else {
+        await createTrade(payload);
+      }
+
+      onTradeAdded();
+      onClose();
     } catch (error) {
-      alert('Error creating trade: ' + error.message);
+      alert('Error saving trade: ' + error.message);
     }
   };
 
@@ -41,7 +72,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Add New Trade</h2>
+        <h2>{editingTrade ? 'Edit Trade' : 'Add New Trade'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Type</label>
@@ -55,9 +86,9 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
 
           <div className="form-group">
             <label>Stock Symbol</label>
-            <input 
-              type="text" 
-              value={formData.symbol} 
+            <input
+              type="text"
+              value={formData.symbol}
               onChange={(e) => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
               placeholder="e.g., AAPL, MSFT, TSLA"
               required
@@ -67,9 +98,9 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
             <div className="form-group">
               <label>Trade Open Date</label>
-              <input 
-                type="date" 
-                value={formData.open_date} 
+              <input
+                type="date"
+                value={formData.open_date}
                 onChange={(e) => setFormData({...formData, open_date: e.target.value})}
                 required
               />
@@ -77,9 +108,9 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
 
             <div className="form-group">
               <label>Expiration Date</label>
-              <input 
-                type="date" 
-                value={formData.expiration_date} 
+              <input
+                type="date"
+                value={formData.expiration_date}
                 onChange={(e) => setFormData({...formData, expiration_date: e.target.value})}
                 required
               />
@@ -89,9 +120,9 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
             <div className="form-group">
               <label>Number of Contracts</label>
-              <input 
-                type="number" 
-                value={formData.contracts} 
+              <input
+                type="number"
+                value={formData.contracts}
                 onChange={(e) => setFormData({...formData, contracts: parseInt(e.target.value)})}
                 min="1"
                 required
@@ -100,10 +131,10 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
 
             <div className="form-group">
               <label>Strike Price ($)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 step="0.01"
-                value={formData.strike_price} 
+                value={formData.strike_price}
                 onChange={(e) => setFormData({...formData, strike_price: e.target.value})}
                 placeholder="e.g., 150.00"
                 required
@@ -114,10 +145,10 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
             <div className="form-group">
               <label>Premium (per share)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 step="0.01"
-                value={formData.premium_per_share} 
+                value={formData.premium_per_share}
                 onChange={(e) => setFormData({...formData, premium_per_share: e.target.value})}
                 placeholder="e.g., 2.50"
                 required
@@ -126,18 +157,19 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded }) {
 
             <div className="form-group">
               <label>Fees ($)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 step="0.01"
-                value={formData.fees} 
-                onChange={(e) => setFormData({...formData, fees: parseFloat(e.target.value)})}
+                value={formData.fees}
+                onChange={(e) => setFormData({...formData, fees: e.target.value})}
+                placeholder="e.g., 0.65"
               />
             </div>
           </div>
 
           <div className="form-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">Add Trade</button>
+            <button type="submit" className="btn btn-primary">{editingTrade ? 'Update Trade' : 'Add Trade'}</button>
           </div>
         </form>
       </div>
@@ -149,6 +181,9 @@ function TradesPage() {
   const [trades, setTrades] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [selectedTrade, setSelectedTrade] = useState(null);
+  const [editingTrade, setEditingTrade] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
@@ -170,27 +205,47 @@ function TradesPage() {
     loadData();
   }, []);
 
-  const handleCloseTrade = async (tradeId) => {
-    const closeDate = prompt('Close date (YYYY-MM-DD):');
-    const closeMethod = prompt('Close method (BTC/EXPIRATION/ASSIGNMENT):');
-    const closePrice = prompt('Close price (per share):');
+  const handleCloseTrade = (trade) => {
+    setSelectedTrade(trade);
+    setCloseModalOpen(true);
+  };
 
-    if (!closeDate || !closeMethod) return;
+  const handleEditTrade = (trade) => {
+    setEditingTrade(trade);
+    setIsModalOpen(true);
+  };
 
-    try {
-      await closeTrade(tradeId, {
-        close_date: closeDate,
-        close_method: closeMethod,
-        close_price: parseFloat(closePrice) || 0
-      });
-      loadData();
-    } catch (error) {
-      alert('Error closing trade: ' + error.message);
+  const handleDeleteTrade = async (tradeId) => {
+    if (window.confirm('Are you sure you want to delete this trade?')) {
+      try {
+        await deleteTrade(tradeId);
+        loadData();
+      } catch (error) {
+        alert('Error deleting trade: ' + error.message);
+      }
     }
+  };
+
+  const handleTradeUpdated = () => {
+    setEditingTrade(null);
+    loadData();
   };
 
   const calculateNetPremium = (trade) => {
     return ((trade.premium_per_share * trade.contracts * 100) - trade.fees).toFixed(2);
+  };
+
+  const calculateDTE = (expirationDate) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const expDate = new Date(expirationDate);
+    expDate.setHours(0, 0, 0, 0);
+
+    const diffTime = expDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    return diffDays;
   };
 
   if (loading) return <div className="loading">Loading...</div>;
@@ -209,12 +264,16 @@ function TradesPage() {
             <div className="stat-value">{dashboard.open_trades}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">% ITM</div>
-            <div className="stat-value">0.0%</div>
+            <div className="stat-label">Open Trades Net Premium</div>
+            <div className="stat-value positive">${dashboard.open_trades_net_premium.toFixed(2)}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Open Trades Net Premium</div>
-            <div className="stat-value positive">${dashboard.total_net_premiums.toFixed(2)}</div>
+            <div className="stat-label">Premium Collected</div>
+            <div className="stat-value positive">${dashboard.premium_collected.toFixed(2)}</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-label">% ITM</div>
+            <div className="stat-value">0.0%</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Average Yield</div>
@@ -224,8 +283,11 @@ function TradesPage() {
       )}
 
       <div style={{marginBottom: '20px'}}>
-        <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-           Add New Trade
+        <button className="btn btn-primary" onClick={() => {
+          setEditingTrade(null);
+          setIsModalOpen(true);
+        }}>
+          Add New Trade
         </button>
       </div>
 
@@ -240,6 +302,7 @@ function TradesPage() {
               <th>Premium</th>
               <th>Open Date</th>
               <th>Expiration</th>
+              <th>DTE</th>
               <th>Net Premium</th>
               <th>Actions</th>
             </tr>
@@ -247,7 +310,7 @@ function TradesPage() {
           <tbody>
             {trades.length === 0 ? (
               <tr>
-                <td colSpan="9" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                <td colSpan="10" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
                   No open trades. Click "Add New Trade" to get started.
                 </td>
               </tr>
@@ -259,12 +322,19 @@ function TradesPage() {
                   <td>{trade.contracts}</td>
                   <td>${trade.strike_price}</td>
                   <td>${trade.premium_per_share}</td>
-                  <td>{trade.open_date}</td>
-                  <td>{trade.expiration_date}</td>
+                  <td>{trade.open_date.split('T')[0]}</td>
+                  <td>{trade.expiration_date.split('T')[0]}</td>
+                  <td style={{fontWeight: '600', color: calculateDTE(trade.expiration_date) <= 7 ? '#ff6b6b' : '#32b8c6'}}>{calculateDTE(trade.expiration_date)}</td>
                   <td className="positive">${calculateNetPremium(trade)}</td>
-                  <td>
-                    <button className="btn" onClick={() => handleCloseTrade(trade.trade_id)}>
+                  <td style={{display: 'flex', gap: '6px', alignItems: 'center'}}>
+                    <button className="btn" onClick={() => handleCloseTrade(trade)} title="Close Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
                       Close
+                    </button>
+                    <button className="btn" onClick={() => handleEditTrade(trade)} title="Edit Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
+                      Edit
+                    </button>
+                    <button className="btn" onClick={() => handleDeleteTrade(trade.trade_id)} title="Delete Trade" style={{fontSize: '11px', padding: '6px 10px', minWidth: 'auto'}}>
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -274,11 +344,27 @@ function TradesPage() {
         </table>
       </div>
 
-      <AddTradeModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)}
+      <AddTradeModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingTrade(null);
+        }}
         onTradeAdded={loadData}
+        editingTrade={editingTrade}
       />
+
+      {selectedTrade && (
+        <CloseTradeModal
+          isOpen={closeModalOpen}
+          onClose={() => {
+            setCloseModalOpen(false);
+            setSelectedTrade(null);
+          }}
+          trade={selectedTrade}
+          onTradeUpdated={handleTradeUpdated}
+        />
+      )}
     </div>
   );
 }

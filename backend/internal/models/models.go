@@ -86,15 +86,18 @@ type Income struct {
 
 // Dashboard represents analytics dashboard data
 type Dashboard struct {
-    TotalTrades         int     `json:"total_trades"`
-    OpenTrades          int     `json:"open_trades"`
-    ClosedTrades        int     `json:"closed_trades"`
-    WinRate             float64 `json:"win_rate"`
-    TotalNetPremiums    float64 `json:"total_net_premiums"`
-    OpenPositionsPL     float64 `json:"open_positions_pl"`
-    ClosedPositionsPL   float64 `json:"closed_positions_pl"`
-    TotalPL             float64 `json:"total_pl"`
-    OpenTradesCapital   float64 `json:"open_trades_capital"`
-    TotalCapital        float64 `json:"total_capital"`
-    AverageYield        float64 `json:"average_yield"`
+    TotalTrades          int     `json:"total_trades"`
+    OpenTrades           int     `json:"open_trades"`
+    ClosedTrades         int     `json:"closed_trades"`
+    WinRate              float64 `json:"win_rate"`
+    TotalNetPremiums     float64 `json:"total_net_premiums"`
+    OpenPositionsPL      float64 `json:"open_positions_pl"`
+    ClosedPositionsPL    float64 `json:"closed_positions_pl"`
+    TotalPL              float64 `json:"total_pl"`
+    OpenTradesCapital    float64 `json:"open_trades_capital"`
+    TotalCapital         float64 `json:"total_capital"`
+    AverageYield         float64 `json:"average_yield"`
+
+    OpenTradesNetPremium float64 `json:"open_trades_net_premium"`
+    PremiumCollected     float64 `json:"premium_collected"`
 }

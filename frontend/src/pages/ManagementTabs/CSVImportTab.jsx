@@ -9,6 +9,8 @@ export default function CSVImportTab() {
   const [editedTrades, setEditedTrades] = useState({});
   const fileInputRef = useRef(null);
 
+  const todayISO = new Date().toISOString().split('T')[0];
+
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setValidationResults(null);
@@ -82,7 +84,7 @@ export default function CSVImportTab() {
     if (editedTrades[result.line_num]?.[field] !== undefined) {
       return editedTrades[result.line_num][field];
     }
-    if (field === 'close_method') return result.trade.close_method || '';
+    if (field === 'close_method') return result.trade.close_method || (result.trade.close_price ? 'BTC' : '');
     if (field === 'close_date') return result.trade.close_date || '';
     if (field === 'close_price') return result.trade.close_price || '';
     return '';
@@ -100,6 +102,12 @@ export default function CSVImportTab() {
     return false;
   };
 
+  // Determina si trade está expirado o abierto
+  const isTradeExpired = (expirationDate) => {
+    if (!expirationDate) return false;
+    return expirationDate < todayISO;
+  };
+
   const handleConfirmImport = async () => {
     const tradesToImport = validationResults.results
       .filter(r => selectedTrades.has(r.line_num))
@@ -107,10 +115,20 @@ export default function CSVImportTab() {
         const trade = { ...r.trade };
         const edited = editedTrades[r.line_num] || {};
 
-        // Aplicar ediciones
-        if (edited.close_method) trade.close_method = edited.close_method;
-        if (edited.close_date && edited.close_date !== 'OPEN') trade.close_date = edited.close_date;
-        if (edited.close_price) trade.close_price = parseFloat(edited.close_price);
+        // Aplicar ediciones y reglas por defecto
+        if (edited.close_method) {
+          trade.close_method = edited.close_method;
+        } else if (trade.close_price) {
+          trade.close_method = "BTC";
+        }
+        if (edited.close_date && edited.close_date !== 'OPEN') {
+          trade.close_date = edited.close_date;
+        } else if (edited.close_date === 'OPEN') {
+          trade.close_date = 'OPEN';
+        }
+        if (edited.close_price) {
+          trade.close_price = parseFloat(edited.close_price);
+        }
 
         return trade;
       });
@@ -150,6 +168,26 @@ export default function CSVImportTab() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteTrade = (lineNum) => {
+    const newResults = validationResults.results.filter(r => r.line_num !== lineNum);
+    setValidationResults({ ...validationResults, results: newResults });
+    setSelectedTrades(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(lineNum);
+      return newSet;
+    });
+    setEditedTrades(prev => {
+      const copy = { ...prev };
+      delete copy[lineNum];
+      return copy;
+    });
+  };
+
+  const handleConfirmSingle = (lineNum) => {
+    setSelectedTrades(new Set([lineNum]));
+    handleConfirmImport();
   };
 
   return (
@@ -259,15 +297,20 @@ export default function CSVImportTab() {
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Tipo</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Contratos</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Prima</th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Expiración</th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Estado</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Método Cierre</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Fecha Cierre</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>Precio Cierre</th>
                     <th style={{ padding: '12px', textAlign: 'left', color: '#9ca3af', borderBottom: '1px solid #4a5568' }}>P/L</th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#f87171', borderBottom: '1px solid #4a5568' }}>Acción</th>
+                    <th style={{ padding: '12px', textAlign: 'left', color: '#32d451', borderBottom: '1px solid #4a5568' }}>Confirmar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {validationResults.results.map((result, idx) => {
                     const isComplete = isTradeComplete(result);
+                    const expired = isTradeExpired(result.trade.expiration_date);
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid #4a5568', backgroundColor: isComplete ? 'transparent' : '#3a2a2a' }}>
                         <td style={{ padding: '12px', color: '#e5e7eb' }}>
@@ -281,8 +324,8 @@ export default function CSVImportTab() {
                         <td style={{ padding: '12px', color: '#e5e7eb' }}>{result.trade.trade_type}</td>
                         <td style={{ padding: '12px', color: '#e5e7eb' }}>{result.trade.contracts}</td>
                         <td style={{ padding: '12px', color: '#e5e7eb' }}>${result.trade.premium_per_share?.toFixed(2)}</td>
-                        
-                        {/* CLOSE METHOD - Editable Dropdown */}
+                        <td style={{ padding: '12px', color: expired ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>{result.trade.expiration_date}</td>
+                        <td style={{ padding: '12px', color: expired ? '#ef4444' : '#e5e7eb', fontWeight: 'bold' }}>{expired ? 'Expirado' : 'Activo'}</td>
                         <td style={{ padding: '12px' }}>
                           <select
                             value={getEditedValue(result, 'close_method')}
@@ -302,8 +345,6 @@ export default function CSVImportTab() {
                             <option value="Assigned">Assigned</option>
                           </select>
                         </td>
-
-                        {/* CLOSE DATE - Editable Date or OPEN */}
                         <td style={{ padding: '12px' }}>
                           <input
                             type="date"
@@ -335,8 +376,6 @@ export default function CSVImportTab() {
                             OPEN
                           </button>
                         </td>
-
-                        {/* CLOSE PRICE - Editable Input */}
                         <td style={{ padding: '12px' }}>
                           <input
                             type="number"
@@ -354,14 +393,42 @@ export default function CSVImportTab() {
                             }}
                           />
                         </td>
-
-                        {/* P/L Calculated */}
-                        <td style={{ 
-                          padding: '12px', 
+                        <td style={{
+                          padding: '12px',
                           color: result.pl && result.pl > 0 ? '#10b981' : result.pl && result.pl < 0 ? '#f59e0b' : '#9ca3af',
                           fontWeight: 'bold'
                         }}>
                           {result.pl ? result.pl.toFixed(2) : '-'}
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <button
+                            onClick={() => handleDeleteTrade(result.line_num)}
+                            style={{
+                              padding: '6px 10px',
+                              background: '#ef4444',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <button
+                            onClick={() => handleConfirmSingle(result.line_num)}
+                            style={{
+                              padding: '6px 10px',
+                              background: '#22c55e',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Confirmar
+                          </button>
                         </td>
                       </tr>
                     );

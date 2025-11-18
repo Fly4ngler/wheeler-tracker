@@ -60,7 +60,7 @@ func (h *TradeHandler) ListTrades(c *gin.Context) {
 
 func (h *TradeHandler) GetTrade(c *gin.Context) {
     id := c.Param("id")
-    
+
     var t models.Trade
     err := h.db.QueryRow(`
         SELECT trade_id, account_id, symbol, trade_type, contracts, strike_price,
@@ -71,7 +71,7 @@ func (h *TradeHandler) GetTrade(c *gin.Context) {
         &t.StrikePrice, &t.PremiumPerShare, &t.OpenDate, &t.ExpirationDate,
         &t.CloseDate, &t.CloseMethod, &t.ClosePrice, &t.Fees, &t.Status,
         &t.Tags, &t.Notes, &t.WheelID, &t.CreatedAt, &t.UpdatedAt)
-    
+
     if err == sql.ErrNoRows {
         c.JSON(http.StatusNotFound, gin.H{"error": "Trade not found"})
         return
@@ -97,7 +97,7 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
     `, t.AccountID, t.Symbol, t.TradeType, t.Contracts, t.StrikePrice,
         t.PremiumPerShare, t.OpenDate, t.ExpirationDate, t.Fees, t.Tags, t.Notes)
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -111,20 +111,20 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
 func (h *TradeHandler) UpdateTrade(c *gin.Context) {
     id := c.Param("id")
     var t models.Trade
-    
+
     if err := c.ShouldBindJSON(&t); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
     _, err := h.db.Exec(`
-        UPDATE trades 
+        UPDATE trades
         SET symbol = ?, trade_type = ?, contracts = ?, strike_price = ?,
             premium_per_share = ?, fees = ?, tags = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
         WHERE trade_id = ?
     `, t.Symbol, t.TradeType, t.Contracts, t.StrikePrice,
         t.PremiumPerShare, t.Fees, t.Tags, t.Notes, id)
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -135,24 +135,24 @@ func (h *TradeHandler) UpdateTrade(c *gin.Context) {
 
 func (h *TradeHandler) CloseTrade(c *gin.Context) {
     id := c.Param("id")
-    
+
     var req struct {
         CloseDate   string  `json:"close_date" binding:"required"`
         CloseMethod string  `json:"close_method" binding:"required"`
         ClosePrice  float64 `json:"close_price"`
     }
-    
+
     if err := c.ShouldBindJSON(&req); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
     _, err := h.db.Exec(`
-        UPDATE trades 
+        UPDATE trades
         SET close_date = ?, close_method = ?, close_price = ?, status = 'CLOSED', updated_at = CURRENT_TIMESTAMP
         WHERE trade_id = ?
     `, req.CloseDate, req.CloseMethod, req.ClosePrice, id)
-    
+
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -163,7 +163,7 @@ func (h *TradeHandler) CloseTrade(c *gin.Context) {
 
 func (h *TradeHandler) DeleteTrade(c *gin.Context) {
     id := c.Param("id")
-    
+
     _, err := h.db.Exec("DELETE FROM trades WHERE trade_id = ?", id)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -179,13 +179,18 @@ func (h *TradeHandler) GetDashboard(c *gin.Context) {
     h.db.QueryRow("SELECT COUNT(*) FROM trades").Scan(&dashboard.TotalTrades)
     h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'").Scan(&dashboard.OpenTrades)
     h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED'").Scan(&dashboard.ClosedTrades)
-    
+
     h.db.QueryRow(`
         SELECT COALESCE(SUM((premium_per_share * contracts * 100) - fees), 0)
-        FROM trades WHERE status = 'CLOSED'
-    `).Scan(&dashboard.TotalNetPremiums)
+        FROM trades WHERE status = 'OPEN'
+    `).Scan(&dashboard.OpenTradesNetPremium)
 
-    if dashboard.ClosedTrades > 0 {
+    h.db.QueryRow(`
+        SELECT COALESCE(SUM((premium_per_share * contracts * 100) - (close_price * contracts * 100) - fees), 0)
+        FROM trades WHERE status = 'CLOSED'
+    `).Scan(&dashboard.PremiumCollected)
+
+    if dashboard.TotalTrades > 0 {
         dashboard.WinRate = float64(dashboard.ClosedTrades) / float64(dashboard.TotalTrades) * 100
     }
 
@@ -194,7 +199,7 @@ func (h *TradeHandler) GetDashboard(c *gin.Context) {
 
 func (h *TradeHandler) GetPerformance(c *gin.Context) {
     rows, err := h.db.Query(`
-        SELECT symbol, COUNT(*) as trades, 
+        SELECT symbol, COUNT(*) as trades,
                SUM((premium_per_share * contracts * 100) - fees) as total_premium
         FROM trades
         WHERE status = 'CLOSED'

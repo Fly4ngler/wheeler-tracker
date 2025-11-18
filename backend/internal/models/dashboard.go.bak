@@ -1,0 +1,11 @@
+package models
+
+type Dashboard struct {
+    TotalTrades          int     `json:"total_trades"`
+    OpenTrades           int     `json:"open_trades"`
+    ClosedTrades         int     `json:"closed_trades"`
+    OpenTradesNetPremium float64 `json:"open_trades_net_premium"`
+    PremiumCollected     float64 `json:"premium_collected"`
+    WinRate              float64 `json:"win_rate"`
+    AverageYield         float64 `json:"average_yield"`
+}
