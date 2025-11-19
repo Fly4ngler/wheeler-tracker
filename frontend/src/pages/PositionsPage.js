@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { getPositions } from '../services/api';
+import { ActiveAccountContext } from '../context/ActiveAccountContext';
 
 function PositionsPage() {
+  const { activeAccountId, loadingActiveAccount } = useContext(ActiveAccountContext);
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const loadPositions = async () => {
     try {
-      const res = await getPositions({ status: 'OPEN' });
-      setPositions(Array.isArray(res.data) ? res.data : []); // Validar siempre array
+      const res = await getPositions({ status: 'OPEN', account_id: activeAccountId });
+      setPositions(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       setPositions([]);
     } finally {
@@ -17,14 +19,15 @@ function PositionsPage() {
   };
 
   useEffect(() => {
-    loadPositions();
-  }, []);
+    if (activeAccountId && !loadingActiveAccount) {
+      loadPositions();
+    }
+  }, [activeAccountId, loadingActiveAccount]);
 
   const safePositions = Array.isArray(positions) ? positions : [];
-
   const totalPositions = safePositions.length;
   const totalShares = safePositions.reduce((sum, p) => sum + p.shares, 0);
-  const totalCapital = safePositions.reduce((sum, p) => sum + (p.shares * p.cost_basis_per_share), 0);
+  const totalCapital = safePositions.reduce((sum, p) => sum + p.shares * p.cost_basis_per_share, 0);
 
   if (loading) return <div className="loading">Loading...</div>;
 
@@ -55,7 +58,7 @@ function PositionsPage() {
       </div>
 
       <div style={{marginBottom: '20px'}}>
-        <button className="btn btn-primary"> Add Position</button>
+        <button className="btn btn-primary">Add Position</button>
       </div>
 
       <div className="table-container">

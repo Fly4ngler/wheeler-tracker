@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { getQuote, getTrades } from '../services/api';
+import { ActiveAccountContext } from '../context/ActiveAccountContext';
 
 function TickerPage() {
+  const { activeAccountId, loadingActiveAccount } = useContext(ActiveAccountContext);
   const [symbol, setSymbol] = useState('');
   const [quote, setQuote] = useState(null);
   const [trades, setTrades] = useState([]);
@@ -14,8 +16,8 @@ function TickerPage() {
     setLoading(true);
     try {
       const [quoteRes, tradesRes] = await Promise.all([
-        getQuote(symbol.toUpperCase()),
-        getTrades({ symbol: symbol.toUpperCase() })
+        getQuote(symbol.toUpperCase(), activeAccountId),
+        getTrades({ symbol: symbol.toUpperCase(), account_id: activeAccountId })
       ]);
       setQuote(quoteRes.data);
       setTrades(tradesRes.data);
@@ -26,6 +28,13 @@ function TickerPage() {
     }
   };
 
+  // Opcional: limpiar resultados al cambiar de cuenta activa
+  useEffect(() => {
+    setQuote(null);
+    setTrades([]);
+    setSymbol('');
+  }, [activeAccountId]);
+
   return (
     <div>
       <div className="page-header">
@@ -35,7 +44,7 @@ function TickerPage() {
 
       <div style={{marginBottom: '30px'}}>
         <form onSubmit={handleSearch} style={{display: 'flex', gap: '12px', maxWidth: '600px'}}>
-          <input 
+          <input
             type="text"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
@@ -118,7 +127,6 @@ function TickerPage() {
 
       {!quote && !loading && (
         <div style={{textAlign: 'center', padding: '60px', color: '#9ca3af'}}>
-          <div style={{fontSize: '48px', marginBottom: '20px'}}></div>
           <h3>Search for a ticker to view analytics</h3>
           <p>Enter a stock symbol above to see real-time data and trade history</p>
         </div>

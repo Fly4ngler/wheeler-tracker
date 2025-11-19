@@ -19,12 +19,11 @@ function CloseTradeModal({ isOpen, onClose, trade, onTradeUpdated }) {
     }
 
     if (formData.close_method === 'BTC') {
-      // Fecha cierre >= fecha apertura
-      if (formData.close_date < trade.open_date) {
+      // Comparar como objetos Date para permitir igualdad
+      if (new Date(formData.close_date) < new Date(trade.open_date)) {
         newErrors.close_date = 'Close date cannot be before open date';
       }
-      // Fecha cierre <= fecha expiración
-      if (formData.close_date > trade.expiration_date) {
+      if (new Date(formData.close_date) > new Date(trade.expiration_date)) {
         newErrors.close_date = 'Close date cannot be after expiration date';
       }
     }
@@ -33,7 +32,6 @@ function CloseTradeModal({ isOpen, onClose, trade, onTradeUpdated }) {
       newErrors.close_method = 'Close method is required';
     }
 
-    // Close price es requerido solo para BTC
     if (formData.close_method === 'BTC') {
       if (!formData.close_price || parseFloat(formData.close_price) < 0) {
         newErrors.close_price = 'Valid close price required for BTC';
@@ -53,7 +51,6 @@ function CloseTradeModal({ isOpen, onClose, trade, onTradeUpdated }) {
 
     setLoading(true);
     try {
-      // Auto-set close_price a 0 para EXPIRATION y ASSIGNMENT
       let closePriceToSend = parseFloat(formData.close_price);
       if (formData.close_method === 'EXPIRATION' || formData.close_method === 'ASSIGNMENT') {
         closePriceToSend = 0;
@@ -92,7 +89,6 @@ function CloseTradeModal({ isOpen, onClose, trade, onTradeUpdated }) {
   const calculatePL = () => {
     let priceForCalc = parseFloat(formData.close_price) || 0;
 
-    // Auto-use 0 for EXPIRATION and ASSIGNMENT
     if (formData.close_method === 'EXPIRATION' || formData.close_method === 'ASSIGNMENT') {
       priceForCalc = 0;
     }
@@ -164,7 +160,7 @@ function CloseTradeModal({ isOpen, onClose, trade, onTradeUpdated }) {
         <form onSubmit={handleSubmit}>
           {errors.submit && (
             <div className="error-alert" style={{marginBottom: '12px'}}>
-               {errors.submit}
+              {errors.submit}
             </div>
           )}
 

@@ -1,29 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { getDashboard, getPerformance } from '../services/api';
+import { ActiveAccountContext } from '../context/ActiveAccountContext';
 
 function AnalyticsPage() {
+  const { activeAccountId, loadingActiveAccount } = useContext(ActiveAccountContext);
   const [dashboard, setDashboard] = useState(null);
   const [performance, setPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const loadData = async () => {
+    try {
+      const [dashRes, perfRes] = await Promise.all([
+        getDashboard(activeAccountId),
+        getPerformance(activeAccountId)
+      ]);
+      setDashboard(dashRes.data || {});
+      setPerformance(Array.isArray(perfRes.data) ? perfRes.data : []);
+    } catch (error) {
+      setPerformance([]);
+      setDashboard({});
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [dashRes, perfRes] = await Promise.all([
-          getDashboard(),
-          getPerformance()
-        ]);
-        setDashboard(dashRes.data || {});
-        setPerformance(Array.isArray(perfRes.data) ? perfRes.data : []);
-      } catch (error) {
-        setPerformance([]);
-        setDashboard({});
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadData();
-  }, []);
+    if (activeAccountId && !loadingActiveAccount) {
+      loadData();
+    }
+  }, [activeAccountId, loadingActiveAccount]);
 
   if (loading) return <div className="loading">Loading...</div>;
 

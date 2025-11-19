@@ -3,9 +3,9 @@ import { getTrades, getDashboard, createTrade, updateTrade, deleteTrade } from '
 import CloseTradeModal from './CloseTradeModal';
 import { ActiveAccountContext } from '../context/ActiveAccountContext';
 
-function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAccountId }) {
+function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAccount, loadingActiveAccount }) {
   const [formData, setFormData] = useState({
-    account_id: activeAccountId || 1,
+    account_id: activeAccount ? activeAccount.account_id : 1,
     symbol: '',
     trade_type: 'CSP',
     contracts: 1,
@@ -13,11 +13,27 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
     premium_per_share: '',
     open_date: new Date().toISOString().split('T')[0],
     expiration_date: '',
-    fees: '0.65'
+    fees: '',
   });
 
   useEffect(() => {
-    if (editingTrade) {
+    if (!editingTrade && isOpen) {
+      setFormData({
+        account_id: activeAccount ? activeAccount.account_id : 1,
+        symbol: '',
+        trade_type: 'CSP',
+        contracts: 1,
+        strike_price: '',
+        premium_per_share: '',
+        open_date: new Date().toISOString().split('T')[0],
+        expiration_date: '',
+        fees: '',
+      });
+    }
+  }, [activeAccount, isOpen, editingTrade]);
+
+  useEffect(() => {
+    if (editingTrade && isOpen) {
       setFormData({
         account_id: editingTrade.account_id,
         symbol: editingTrade.symbol,
@@ -27,62 +43,85 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
         premium_per_share: editingTrade.premium_per_share.toString(),
         open_date: editingTrade.open_date.split('T')[0],
         expiration_date: editingTrade.expiration_date.split('T')[0],
-        fees: editingTrade.fees.toString()
-      });
-    } else {
-      setFormData({
-        account_id: activeAccountId || 1,
-        symbol: '',
-        trade_type: 'CSP',
-        contracts: 1,
-        strike_price: '',
-        premium_per_share: '',
-        open_date: new Date().toISOString().split('T')[0],
-        expiration_date: '',
-        fees: '0.65'
+        fees: editingTrade.fees ? editingTrade.fees.toString() : '',
       });
     }
-  }, [editingTrade, isOpen, activeAccountId]);
+  }, [editingTrade, isOpen]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const payload = {
         ...formData,
+        account_id: activeAccount ? activeAccount.account_id : 1,
         strike_price: parseFloat(formData.strike_price),
         premium_per_share: parseFloat(formData.premium_per_share),
         contracts: parseInt(formData.contracts),
-        fees: parseFloat(formData.fees) || 0
+        fees: parseFloat(formData.fees) || 0,
       };
-
       if (editingTrade) {
         await updateTrade(editingTrade.trade_id, payload);
       } else {
         await createTrade(payload);
       }
-
       onTradeAdded();
       onClose();
     } catch (error) {
-      alert('Error saving trade: ' + error.message);
+      const errorMessage = error.response?.data?.message || error.message || 'Error desconocido';
+      alert('Error al guardar trade: ' + errorMessage);
     }
   };
 
   if (!isOpen) return null;
 
+  // Componente input fecha con icono común
+  const DateInputWithIcon = ({ label, value, onChange, min, max, required }) => (
+    <div className="form-group" style={{ position: 'relative' }}>
+      <label>{label}</label>
+      <input
+        type="date"
+        value={value}
+        onChange={onChange}
+        min={min}
+        max={max}
+        required={required}
+        style={{ fontSize: 13, padding: '8px', width: '100%' }}
+      />
+      <span style={{
+        position: 'absolute',
+        right: 12,
+        top: '50%',
+        transform: 'translateY(-50%)',
+        pointerEvents: 'none',
+        fontSize: 22,
+        color: '#6b7280'
+      }}></span>
+    </div>
+  );
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>{editingTrade ? 'Editar Trade' : 'Nuevo Trade'}</h2>
+        <h2>
+          <span style={{ fontWeight: 700 }}>{editingTrade ? 'Editar trade' : 'Nuevo trade'}</span>
+          <span style={{ marginLeft: 8, color: '#9ca3af', fontWeight: 400 }}>
+            {loadingActiveAccount
+              ? 'cargando cuenta...'
+              : activeAccount && activeAccount.name
+                ? `en cuenta ${activeAccount.name}`
+                : ''}
+          </span>
+        </h2>
         <form onSubmit={handleSubmit}>
+          <input type="hidden" value={formData.account_id} />
           <div className="form-group">
             <label>Símbolo *</label>
             <input
               type="text"
-              value={formData.symbol}
-              onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
               required
               placeholder="AAPL"
+              value={formData.symbol}
+              onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
             />
           </div>
           <div className="form-group">
@@ -95,15 +134,15 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
               <option value="CC">CC (Covered Call)</option>
             </select>
           </div>
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div className="form-group">
               <label>Contratos *</label>
               <input
                 type="number"
+                min="1"
+                required
                 value={formData.contracts}
                 onChange={(e) => setFormData({ ...formData, contracts: e.target.value })}
-                required
-                min="1"
               />
             </div>
             <div className="form-group">
@@ -111,10 +150,10 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
               <input
                 type="number"
                 step="0.01"
+                placeholder="100.00"
+                required
                 value={formData.strike_price}
                 onChange={(e) => setFormData({ ...formData, strike_price: e.target.value })}
-                required
-                placeholder="100.00"
               />
             </div>
           </div>
@@ -123,40 +162,34 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
             <input
               type="number"
               step="0.01"
+              placeholder="1.50"
+              required
               value={formData.premium_per_share}
               onChange={(e) => setFormData({ ...formData, premium_per_share: e.target.value })}
-              required
-              placeholder="1.50"
             />
           </div>
-          <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
-            <div className="form-group">
-              <label>Fecha Apertura *</label>
-              <input
-                type="date"
-                value={formData.open_date}
-                onChange={(e) => setFormData({ ...formData, open_date: e.target.value })}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>Fecha Expiración *</label>
-              <input
-                type="date"
-                value={formData.expiration_date}
-                onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
-                required
-              />
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <DateInputWithIcon
+              label="Fecha Apertura *"
+              value={formData.open_date}
+              onChange={(e) => setFormData({ ...formData, open_date: e.target.value })}
+              required
+            />
+            <DateInputWithIcon
+              label="Fecha Expiración *"
+              value={formData.expiration_date}
+              onChange={(e) => setFormData({ ...formData, expiration_date: e.target.value })}
+              required
+            />
           </div>
           <div className="form-group">
             <label>Comisiones</label>
             <input
               type="number"
               step="0.01"
+              placeholder="0.65"
               value={formData.fees}
               onChange={(e) => setFormData({ ...formData, fees: e.target.value })}
-              placeholder="0.65"
             />
           </div>
           <div className="form-actions">
@@ -170,7 +203,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
 }
 
 function TradesPage() {
-  const { activeAccountId, loadingActiveAccount } = useContext(ActiveAccountContext);
+  const { activeAccount, loadingActiveAccount } = useContext(ActiveAccountContext);
   const [trades, setTrades] = useState([]);
   const [dashboard, setDashboard] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -184,8 +217,8 @@ function TradesPage() {
     try {
       setLoading(true);
       const [tradesRes, dashboardRes] = await Promise.all([
-        getTrades({ status: 'OPEN', account_id: activeAccountId }),
-        getDashboard(activeAccountId)
+        getTrades({ status: 'OPEN', account_id: activeAccount ? activeAccount.account_id : 1 }),
+        getDashboard(activeAccount ? activeAccount.account_id : 1)
       ]);
       setTrades(tradesRes.data || []);
       setDashboard(dashboardRes.data);
@@ -198,7 +231,7 @@ function TradesPage() {
 
   useEffect(() => {
     loadData();
-  }, [activeAccountId, loadingActiveAccount]);
+  }, [activeAccount, loadingActiveAccount]);
 
   const handleEdit = (trade) => {
     setEditingTrade(trade);
@@ -330,7 +363,8 @@ function TradesPage() {
         }}
         onTradeAdded={loadData}
         editingTrade={editingTrade}
-        activeAccountId={activeAccountId}
+        activeAccount={activeAccount}
+        loadingActiveAccount={loadingActiveAccount}
       />
 
       <CloseTradeModal
