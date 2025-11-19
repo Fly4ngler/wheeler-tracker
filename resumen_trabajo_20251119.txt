@@ -1,0 +1,37 @@
+Resumen de trabajos - 19 de noviembre de 2025
+
+Contexto:
+Se han implementado cambios para mejorar la gestión de cuentas en la aplicación, específicamente en la sincronización del estado activo y en la propagación de la selección en toda la interfaz. Sin embargo, la sincronización completa todavía presenta dificultades y requiere optimización adicional.
+
+Actividades realizadas:
+- Se modificó CloseTradeModal.js para que la validación de fecha de cierre permita la misma fecha de apertura, mediante comparación de objetos Date.
+- Se sustituyó react-datepicker por inputs nativos tipo date, eliminando dependencias externas.
+- En varias páginas principales (PositionsPage.js, WheelsPage.js, TickerPage.js, AnalyticsPage.js y TradesPage.js), se integró la escucha del contexto activeAccountId para que detecte cambios en la cuenta activa y recargue automáticamente los datos mediante useEffect.
+- En AccountsTab.jsx (gestión de cuentas en Management), se implementó un proceso de doble paso: la selección con radio y un botón de confirmación que activa efectivamente la cuenta y recarga la interfaz para reflejar los cambios. Esto, a pesar de mejorar la intención, aún no termina de resolver la sincronización instantánea en toda la interfaz.
+- Se reconstruyó y desplegó la imagen Docker del frontend, asegurando que los cambios están en producción.
+
+Estado actual:
+- La selección y propagación de la cuenta activa aún requiere refresco manual en algunas páginas para reflejar los cambios correctamente.
+- Persisten advertencias de ESLint sobre dependencias en useEffect y variables no utilizadas, que se recomienda corregir en futuras tareas.
+- La estructura de archivos y componentes ha sido ajustada para facilitar la gestión y la integración del contexto.
+
+Estructura relevante de archivos modificados:
+
+/volume1/docker/wheeler-tracker/frontend/
+ src/
+    context/
+       ActiveAccountContext.jsx
+    pages/
+       AnalyticsPage.js
+       CloseTradeModal.js
+       ManagementTabs/
+          AccountsTab.jsx
+       PositionsPage.js
+       TickerPage.js
+       TradesPage.js
+    services/
+        api.js
+ Dockerfile
+ nginx.conf
+
+Este resumen está pensado para abrir un nuevo hilo tras subir los cambios a GitHub y así seguir ajustando la sincronización y usabilidad en gestión de cuentas.
