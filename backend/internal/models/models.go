@@ -4,15 +4,17 @@ import "time"
 
 // Account represents a trading account
 type Account struct {
-    AccountID      int       `json:"account_id"`
-    Name           string    `json:"name"`
-    Broker         string    `json:"broker"`
-    Currency       string    `json:"currency"`
-    InitialBalance float64   `json:"initial_balance"`
-    CurrentBalance float64   `json:"current_balance"`
-    IsActive       bool      `json:"is_active"`
-    CreatedAt      time.Time `json:"created_at"`
-    UpdatedAt      time.Time `json:"updated_at"`
+    AccountID       int       `json:"account_id"`
+    Name            string    `json:"name"`
+    Broker          string    `json:"broker"`
+    Currency        string    `json:"currency"`
+    InitialBalance  float64   `json:"initial_balance"`
+    CurrentBalance  float64   `json:"current_balance"`
+    IsActive        bool      `json:"is_active"`
+    AccountType     string    `json:"account_type"`      // Nuevo campo tipo de cuenta: "cash" o "margin"
+    MarginMultiplier float64   `json:"margin_multiplier"` // Nuevo campo multiplicador de margen, default 1.0
+    CreatedAt       time.Time `json:"created_at"`
+    UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Trade represents an options trade

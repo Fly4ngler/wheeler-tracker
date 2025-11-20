@@ -20,7 +20,6 @@ func NewTradeHandler(db *sql.DB) *TradeHandler {
     return &TradeHandler{db: db}
 }
 
-// Obtener ID cuenta activa
 func (h *TradeHandler) getActiveAccountID() (int, error) {
     var accountID int
     err := h.db.QueryRow("SELECT account_id FROM accounts WHERE is_active = 1 LIMIT 1").Scan(&accountID)
@@ -122,7 +121,6 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
         return
     }
 
-    // Validaciones explícitas
     if t.Symbol == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Symbol is required and must be non-empty"})
         return
@@ -259,54 +257,43 @@ func (h *TradeHandler) DeleteTrade(c *gin.Context) {
 func (h *TradeHandler) GetDashboard(c *gin.Context) {
     var dashboard models.Dashboard
 
-    h.db.QueryRow("SELECT COUNT(*) FROM trades").Scan(&dashboard.TotalTrades)
-    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'OPEN'").Scan(&dashboard.OpenTrades)
-    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED'").Scan(&dashboard.ClosedTrades)
+    accountID := c.Query("account_id")
+    if accountID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
+        return
+    }
+
+    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ?", accountID).Scan(&dashboard.TotalTrades)
+    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'OPEN' AND account_id = ?", accountID).Scan(&dashboard.OpenTrades)
+    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED' AND account_id = ?", accountID).Scan(&dashboard.ClosedTrades)
 
     h.db.QueryRow(`
         SELECT COALESCE(SUM((premium_per_share * contracts * 100) - fees), 0)
-        FROM trades WHERE status = 'OPEN'
-    `).Scan(&dashboard.OpenTradesNetPremium)
+        FROM trades WHERE status = 'OPEN' AND account_id = ?
+    `, accountID).Scan(&dashboard.OpenTradesNetPremium)
 
     h.db.QueryRow(`
         SELECT COALESCE(SUM((premium_per_share * contracts * 100) - (close_price * contracts * 100) - fees), 0)
-        FROM trades WHERE status = 'CLOSED'
-    `).Scan(&dashboard.PremiumCollected)
+        FROM trades WHERE status = 'CLOSED' AND account_id = ?
+    `, accountID).Scan(&dashboard.PremiumCollected)
+
+    // Cálculo de Capital comprometido
+    h.db.QueryRow(`
+        SELECT COALESCE(SUM(strike_price * contracts * 100), 0)
+        FROM trades WHERE status = 'OPEN' AND account_id = ?
+    `, accountID).Scan(&dashboard.OpenTradesCapital)
+
+    // Asignaciones adicionales para otros campos en Dashboard
+    dashboard.TotalNetPremiums = dashboard.OpenTradesNetPremium + dashboard.PremiumCollected
+    dashboard.OpenPositionsPL = 0
+    dashboard.ClosedPositionsPL = 0
+    dashboard.TotalPL = 0
+    dashboard.TotalCapital = dashboard.OpenTradesCapital
+    dashboard.AverageYield = 0
 
     if dashboard.TotalTrades > 0 {
         dashboard.WinRate = float64(dashboard.ClosedTrades) / float64(dashboard.TotalTrades) * 100
     }
 
     c.JSON(http.StatusOK, dashboard)
-}
-
-func (h *TradeHandler) GetPerformance(c *gin.Context) {
-    rows, err := h.db.Query(`
-        SELECT symbol, COUNT(*) as trades,
-               SUM((premium_per_share * contracts * 100) - fees) as total_premium
-        FROM trades
-        WHERE status = 'CLOSED'
-        GROUP BY symbol
-        ORDER BY total_premium DESC
-    `)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-    defer rows.Close()
-
-    var performance []map[string]interface{}
-    for rows.Next() {
-        var symbol string
-        var trades int
-        var totalPremium float64
-        rows.Scan(&symbol, &trades, &totalPremium)
-        performance = append(performance, map[string]interface{}{
-            "symbol":        symbol,
-            "trades":        trades,
-            "total_premium": totalPremium,
-        })
-    }
-
-    c.JSON(http.StatusOK, performance)
 }

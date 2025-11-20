@@ -21,7 +21,7 @@ func NewAccountHandler(db *sql.DB) *AccountHandler {
 func (h *AccountHandler) ListAllAccounts(c *gin.Context) {
     rows, err := h.db.Query(`
         SELECT account_id, name, broker, currency, initial_balance,
-               current_balance, is_active, created_at, updated_at
+               current_balance, is_active, account_type, margin_multiplier, created_at, updated_at
         FROM accounts
         ORDER BY account_id
     `)
@@ -36,7 +36,7 @@ func (h *AccountHandler) ListAllAccounts(c *gin.Context) {
         var acc models.Account
         err := rows.Scan(&acc.AccountID, &acc.Name, &acc.Broker, &acc.Currency,
             &acc.InitialBalance, &acc.CurrentBalance, &acc.IsActive,
-            &acc.CreatedAt, &acc.UpdatedAt)
+            &acc.AccountType, &acc.MarginMultiplier, &acc.CreatedAt, &acc.UpdatedAt)
         if err != nil {
             continue
         }
@@ -50,7 +50,7 @@ func (h *AccountHandler) ListAllAccounts(c *gin.Context) {
 func (h *AccountHandler) ListAccounts(c *gin.Context) {
     rows, err := h.db.Query(`
         SELECT account_id, name, broker, currency, initial_balance,
-               current_balance, is_active, created_at, updated_at
+               current_balance, is_active, account_type, margin_multiplier, created_at, updated_at
         FROM accounts WHERE is_active = 1
     `)
     if err != nil {
@@ -64,7 +64,7 @@ func (h *AccountHandler) ListAccounts(c *gin.Context) {
         var acc models.Account
         err := rows.Scan(&acc.AccountID, &acc.Name, &acc.Broker, &acc.Currency,
             &acc.InitialBalance, &acc.CurrentBalance, &acc.IsActive,
-            &acc.CreatedAt, &acc.UpdatedAt)
+            &acc.AccountType, &acc.MarginMultiplier, &acc.CreatedAt, &acc.UpdatedAt)
         if err != nil {
             continue
         }
@@ -80,11 +80,11 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
     var acc models.Account
     err := h.db.QueryRow(`
         SELECT account_id, name, broker, currency, initial_balance,
-               current_balance, is_active, created_at, updated_at
+               current_balance, is_active, account_type, margin_multiplier, created_at, updated_at
         FROM accounts WHERE account_id = ?
     `, id).Scan(&acc.AccountID, &acc.Name, &acc.Broker, &acc.Currency,
         &acc.InitialBalance, &acc.CurrentBalance, &acc.IsActive,
-        &acc.CreatedAt, &acc.UpdatedAt)
+        &acc.AccountType, &acc.MarginMultiplier, &acc.CreatedAt, &acc.UpdatedAt)
 
     if err == sql.ErrNoRows {
         c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
@@ -106,9 +106,9 @@ func (h *AccountHandler) CreateAccount(c *gin.Context) {
     }
 
     result, err := h.db.Exec(`
-        INSERT INTO accounts (name, broker, currency, initial_balance, current_balance)
-        VALUES (?, ?, ?, ?, ?)
-    `, acc.Name, acc.Broker, acc.Currency, acc.InitialBalance, acc.CurrentBalance)
+        INSERT INTO accounts (name, broker, currency, initial_balance, current_balance, account_type, margin_multiplier)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, acc.Name, acc.Broker, acc.Currency, acc.InitialBalance, acc.CurrentBalance, acc.AccountType, acc.MarginMultiplier)
 
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -131,9 +131,9 @@ func (h *AccountHandler) UpdateAccount(c *gin.Context) {
 
     _, err := h.db.Exec(`
         UPDATE accounts
-        SET name = ?, broker = ?, currency = ?, current_balance = ?, updated_at = CURRENT_TIMESTAMP
+        SET name = ?, broker = ?, currency = ?, current_balance = ?, account_type = ?, margin_multiplier = ?, updated_at = CURRENT_TIMESTAMP
         WHERE account_id = ?
-    `, acc.Name, acc.Broker, acc.Currency, acc.CurrentBalance, id)
+    `, acc.Name, acc.Broker, acc.Currency, acc.CurrentBalance, acc.AccountType, acc.MarginMultiplier, id)
 
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

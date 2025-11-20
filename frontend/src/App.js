@@ -8,6 +8,7 @@ import AnalyticsPage from './pages/AnalyticsPage';
 import TickerPage from './pages/TickerPage';
 import ManagementPage from './pages/ManagementPage';
 import { ActiveAccountProvider } from './context/ActiveAccountContext';
+import ActiveAccountLabel from './pages/ActiveAccountLabel';
 
 function Sidebar() {
   const location = useLocation();
@@ -49,8 +50,9 @@ function App() {
   return (
     <ActiveAccountProvider>
       <Router>
-        <div className="app">
+        <div className="app" style={{ position: 'relative' }}>
           <Sidebar />
+          <ActiveAccountLabel />
           <div className="main-content">
             <Routes>
               <Route path="/" element={<TradesPage />} />

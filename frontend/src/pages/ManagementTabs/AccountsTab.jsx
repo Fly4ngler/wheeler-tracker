@@ -1,34 +1,28 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { ActiveAccountContext } from '../../context/ActiveAccountContext';
 
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF'];
+const ACCOUNT_TYPES = ['cash', 'margin'];
 
 export default function AccountsTab() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showNewForm, setShowNewForm] = useState(false);
-  const [showTransactionForm, setShowTransactionForm] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [newAccount, setNewAccount] = useState({ name: '', broker: '', currency: 'USD', initialBalance: '' });
-  const [editData, setEditData] = useState({ name: '', broker: '', currency: 'USD', current_balance: '' });
-  const [transactionData, setTransactionData] = useState({ amount: '', notes: '' });
-
-  const { activeAccountId, setActiveAccountId } = useContext(ActiveAccountContext);
-
-  // Estado local para selección de cuenta antes de activar
   const [selectedAccountId, setSelectedAccountId] = useState(null);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    broker: '',
+    currency: 'USD',
+    current_balance: '',
+    account_type: 'cash',
+    margin_multiplier: '1.0',
+  });
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
+  const { activeAccountId, setActiveAccountId, reloadActiveAccount } = useContext(ActiveAccountContext);
 
-  useEffect(() => {
-    // Mantener sincronizado el seleccionado con el contexto activo
-    setSelectedAccountId(activeAccountId);
-  }, [activeAccountId]);
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -38,15 +32,24 @@ export default function AccountsTab() {
       setAccounts(data || []);
       if (!activeAccountId && data.length > 0) {
         const active = data.find(acc => acc.is_active === 1);
-        setActiveAccountId(active ? active.account_id : data[0].account_id);
-        setSelectedAccountId(active ? active.account_id : data[0].account_id);
+        const newActiveId = active ? active.account_id : data[0].account_id;
+        setActiveAccountId(newActiveId);
+        setSelectedAccountId(newActiveId);
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeAccountId, setActiveAccountId]);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  useEffect(() => {
+    setSelectedAccountId(activeAccountId);
+  }, [activeAccountId]);
 
   const activateAccount = async () => {
     if (!selectedAccountId) return;
@@ -59,8 +62,9 @@ export default function AccountsTab() {
         body: JSON.stringify({ account_id: selectedAccountId }),
       });
       if (!response.ok) throw new Error('Error activando cuenta');
+      await loadAccounts();
       setActiveAccountId(selectedAccountId);
-      await loadAccounts();
+      await reloadActiveAccount();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -68,52 +72,46 @@ export default function AccountsTab() {
     }
   };
 
-  const handleDelete = async (accountId) => {
-    if (!window.confirm("¿Seguro que deseas eliminar esta cuenta? Esta operación no se puede deshacer.")) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(`/api/v1/accounts/${accountId}`, { method: "DELETE" });
-      if (!response.ok) throw new Error('Error eliminando cuenta');
-      if (activeAccountId === accountId) setActiveAccountId(null);
-      await loadAccounts();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditInit = (acc) => {
-    setEditingId(acc.account_id);
-    setEditData({
-      name: acc.name,
-      broker: acc.broker || '',
-      currency: acc.currency,
-      current_balance: acc.current_balance
+  const startEditAccount = (account) => {
+    setEditingAccount(account);
+    setFormData({
+      name: account.name,
+      broker: account.broker || '',
+      currency: account.currency || 'USD',
+      current_balance: account.current_balance ? account.current_balance.toString() : '',
+      account_type: account.account_type || 'cash',
+      margin_multiplier: account.margin_multiplier ? account.margin_multiplier.toString() : '1.0',
     });
+    setShowNewForm(true);
   };
 
-  const handleEditCancel = () => {
-    setEditingId(null);
-    setEditData({ name: '', broker: '', currency: 'USD', current_balance: '' });
+  const cancelEdit = () => {
+    setEditingAccount(null);
+    setFormData({
+      name: '',
+      broker: '',
+      currency: 'USD',
+      current_balance: '',
+      account_type: 'cash',
+      margin_multiplier: '1.0',
+    });
+    setShowNewForm(false);
   };
 
-  const handleEditSubmit = async (acc) => {
+  const handleDelete = async (account) => {
+    if (!window.confirm(`¿Eliminar cuenta '${account.name}'? Esta acción no se puede deshacer.`)) return;
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/v1/accounts/${acc.account_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...editData,
-          current_balance: parseFloat(editData.current_balance)
-        }),
+      const response = await fetch(`/api/v1/accounts/${account.account_id}`, {
+        method: 'DELETE',
       });
-      if (!response.ok) throw new Error('Error actualizando cuenta');
-      setEditingId(null);
+      if (!response.ok) throw new Error('Error eliminando cuenta');
       await loadAccounts();
+      await reloadActiveAccount();
+      if (activeAccountId === account.account_id) {
+        setActiveAccountId(null);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -121,50 +119,37 @@ export default function AccountsTab() {
     }
   };
 
-  const handleNewAccountSubmit = async (e) => {
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/v1/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newAccount.name,
-          broker: newAccount.broker,
-          currency: newAccount.currency,
-          initial_balance: parseFloat(newAccount.initialBalance),
-          current_balance: parseFloat(newAccount.initialBalance)
-        }),
-      });
-      if (!response.ok) throw new Error('Error creando cuenta');
-      setShowNewForm(false);
-      setNewAccount({ name: '', broker: '', currency: 'USD', initialBalance: '' });
+      const payload = {
+        name: formData.name,
+        broker: formData.broker,
+        currency: formData.currency,
+        current_balance: parseFloat(formData.current_balance) || 0,
+        account_type: formData.account_type,
+        margin_multiplier: parseFloat(formData.margin_multiplier) || 1.0,
+      };
+      let response;
+      if (editingAccount) {
+        response = await fetch(`/api/v1/accounts/${editingAccount.account_id}`, {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+      } else {
+        response = await fetch('/api/v1/accounts', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+      }
+      if (!response.ok) throw new Error('Error guardando cuenta');
       await loadAccounts();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTransactionSubmit = async (type, acc) => {
-    setLoading(true);
-    setError('');
-    try {
-      const endpoint = `/api/v1/accounts/${acc.account_id}/${type === "deposit" ? "deposit" : "withdrawal"}`;
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: parseFloat(transactionData.amount),
-          notes: transactionData.notes
-        }),
-      });
-      if (!response.ok) throw new Error('Error realizando operación');
-      setShowTransactionForm(null);
-      setTransactionData({ amount: '', notes: '' });
-      await loadAccounts();
+      await reloadActiveAccount();
+      cancelEdit();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -175,84 +160,104 @@ export default function AccountsTab() {
   return (
     <div>
       <h2 style={{ marginBottom: '20px' }}>Administrar Cuentas</h2>
+
       {error && (
-        <div style={{ color: '#fca5a5', background: '#7f1d1d', padding: '12px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #dc2626' }}>
+        <div style={{ color: '#fca5a5', background: '#7f1d1d', padding: 12, borderRadius: 8, marginBottom: 20, border: '1px solid #dc2626' }}>
           {error}
         </div>
       )}
       {loading && <div className="loading">Cargando...</div>}
-      <button className="btn btn-primary" onClick={() => setShowNewForm(!showNewForm)} style={{ marginBottom: '20px' }}>
-        {showNewForm ? 'Cancelar' : 'Nueva Cuenta'}
+
+      <button
+        className="btn btn-primary"
+        onClick={() => {
+          cancelEdit();
+          setShowNewForm(!showNewForm);
+        }}
+        style={{ marginBottom: 20 }}
+      >
+        {showNewForm ? 'Cancelar' : editingAccount ? 'Editar Cuenta' : 'Nueva Cuenta'}
       </button>
+
       {showNewForm && (
-        <div className="modal-overlay" onClick={() => setShowNewForm(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Nueva Cuenta</h2>
-            <form onSubmit={handleNewAccountSubmit}>
-              <div className="form-group">
-                <label>Nombre *</label>
-                <input
-                  type="text"
-                  placeholder="Nombre de la cuenta"
-                  required
-                  value={newAccount.name}
-                  onChange={e => setNewAccount({ ...newAccount, name: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Broker</label>
-                <input
-                  type="text"
-                  placeholder="Broker"
-                  value={newAccount.broker}
-                  onChange={e => setNewAccount({ ...newAccount, broker: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Moneda *</label>
-                <select
-                  value={newAccount.currency}
-                  onChange={e => setNewAccount({ ...newAccount, currency: e.target.value })}
-                >
-                  {CURRENCIES.map(cur => <option key={cur} value={cur}>{cur}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Saldo Inicial *</label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  required
-                  value={newAccount.initialBalance}
-                  onChange={e => setNewAccount({ ...newAccount, initialBalance: e.target.value })}
-                  step="0.01"
-                  min="0"
-                />
-              </div>
-              <div className="form-actions">
-                <button type="button" className="btn" onClick={() => setShowNewForm(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">Crear Cuenta</button>
-              </div>
-            </form>
+        <form onSubmit={handleFormSubmit} style={{ marginBottom: 20, maxWidth: '400px' }}>
+          <div className="form-group">
+            <label>Nombre *</label>
+            <input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            />
           </div>
-        </div>
+          <div className="form-group">
+            <label>Broker</label>
+            <input
+              type="text"
+              value={formData.broker}
+              onChange={(e) => setFormData({ ...formData, broker: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Moneda</label>
+            <select
+              value={formData.currency}
+              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+            >
+              {CURRENCIES.map((cur) => (
+                <option key={cur} value={cur}>{cur}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Saldo Actual</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.current_balance}
+              onChange={(e) => setFormData({ ...formData, current_balance: e.target.value })}
+            />
+          </div>
+          <div className="form-group">
+            <label>Tipo de Cuenta</label>
+            <select
+              value={formData.account_type}
+              onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
+            >
+              {ACCOUNT_TYPES.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Multiplicador de Margen</label>
+            <input
+              type="number"
+              step="0.01"
+              min="1.0"
+              value={formData.margin_multiplier}
+              onChange={(e) => setFormData({ ...formData, margin_multiplier: e.target.value })}
+            />
+          </div>
+          <div className="form-actions">
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Guardando...' : editingAccount ? 'Actualizar' : 'Crear'}
+            </button>
+          </div>
+        </form>
       )}
+
       <div className="table-container">
         <table>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Nombre</th>
-              <th>Broker</th>
-              <th>Moneda</th>
-              <th>Saldo Actual</th>
-              <th>Activo (selección)</th>
-              <th>Acciones</th>
+              <th>ID</th><th>Nombre</th><th>Broker</th><th>Moneda</th><th>Saldo Actual</th>
+              <th>Tipo de Cuenta</th><th>Multiplicador Margen</th><th>Activo</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {accounts.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center' }}>No hay cuentas registradas.</td></tr>
+              <tr><td colSpan={9} style={{ textAlign: 'center' }}>No hay cuentas registradas.</td></tr>
             ) : (
               accounts.map(acc => (
                 <tr key={acc.account_id}>
@@ -261,6 +266,8 @@ export default function AccountsTab() {
                   <td>{acc.broker || 'N/A'}</td>
                   <td>{acc.currency}</td>
                   <td>${acc.current_balance?.toFixed(2) || '0.00'}</td>
+                  <td>{acc.account_type || 'cash'}</td>
+                  <td>{acc.margin_multiplier?.toFixed(2) || '1.00'}</td>
                   <td>
                     <input
                       type="radio"
@@ -270,8 +277,12 @@ export default function AccountsTab() {
                     />
                   </td>
                   <td>
-                    {/* Botones editar, eliminar, depósito, retiro */}
-                    {/* Mantén la estructura y estilos previos */}
+                    <button className="btn btn-sm" onClick={() => startEditAccount(acc)} disabled={loading}>
+                      Editar
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(acc)} disabled={loading} style={{ marginLeft: 6 }}>
+                      Eliminar
+                    </button>
                   </td>
                 </tr>
               ))
@@ -279,14 +290,14 @@ export default function AccountsTab() {
           </tbody>
         </table>
       </div>
+
       {selectedAccountId !== activeAccountId && (
-        <div style={{ marginTop: '10px' }}>
+        <div style={{ marginTop: 10 }}>
           <button className="btn btn-primary" onClick={activateAccount} disabled={loading}>
             {loading ? 'Activando...' : 'Confirmar activación'}
           </button>
         </div>
       )}
-      {/* Aquí el resto de modales para nuevas cuentas, transacciones, edición */}
     </div>
   );
 }

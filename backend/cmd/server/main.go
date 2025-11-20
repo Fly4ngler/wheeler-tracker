@@ -112,7 +112,7 @@ func main() {
 
         // ==================== ANALYTICS ====================
         v1.GET("/trades/dashboard", tradeHandler.GetDashboard)
-        v1.GET("/trades/performance", tradeHandler.GetPerformance)
+        // v1.GET("/trades/performance", tradeHandler.GetPerformance) // Comentado temporalmente para evitar error
 
         // ==================== EXTERNAL APIs ====================
         v1.GET("/quote/:symbol", apiHandler.GetQuote)

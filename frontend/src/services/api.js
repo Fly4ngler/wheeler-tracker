@@ -48,7 +48,7 @@ export const getQuote = (symbol) => api.get(`/market/quote/${symbol}`);
 export const searchSymbol = (query) => api.get(`/market/search/${query}`);
 
 // Analytics
-export const getDashboard = () => api.get('/trades/dashboard');
+export const getDashboard = (accountId) => api.get('/trades/dashboard', { params: { account_id: accountId } });
 export const getPerformance = () => api.get('/trades/performance');
 
 export default api;

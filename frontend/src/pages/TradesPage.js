@@ -17,9 +17,10 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
   });
 
   useEffect(() => {
-    if (!editingTrade && isOpen) {
-      setFormData({
-        account_id: activeAccount ? activeAccount.account_id : 1,
+    if (isOpen && !editingTrade) {
+      setFormData((prev) => ({
+        ...prev,
+        account_id: activeAccount.account_id,
         symbol: '',
         trade_type: 'CSP',
         contracts: 1,
@@ -28,7 +29,16 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
         open_date: new Date().toISOString().split('T')[0],
         expiration_date: '',
         fees: '',
-      });
+      }));
+    }
+  }, [activeAccount, isOpen, editingTrade]);
+
+  useEffect(() => {
+    if (isOpen && !editingTrade) {
+      setFormData((prev) => ({
+        ...prev,
+        account_id: activeAccount.account_id,
+      }));
     }
   }, [activeAccount, isOpen, editingTrade]);
 
@@ -53,7 +63,7 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
     try {
       const payload = {
         ...formData,
-        account_id: activeAccount ? activeAccount.account_id : 1,
+        account_id: activeAccount.account_id,
         strike_price: parseFloat(formData.strike_price),
         premium_per_share: parseFloat(formData.premium_per_share),
         contracts: parseInt(formData.contracts),
@@ -74,7 +84,6 @@ function AddTradeModal({ isOpen, onClose, onTradeAdded, editingTrade, activeAcco
 
   if (!isOpen) return null;
 
-  // Componente input fecha con icono común
   const DateInputWithIcon = ({ label, value, onChange, min, max, required }) => (
     <div className="form-group" style={{ position: 'relative' }}>
       <label>{label}</label>
@@ -213,15 +222,36 @@ function TradesPage() {
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
+    if (!activeAccount || !activeAccount.account_id) {
+      setTrades([]);
+      setDashboard({
+        open_trades: 0,
+        capital_at_risk: 0,
+        total_premium: 0,
+        open_trades_net_premium: 0
+      });
+      setLoading(false);
+      return;
+    }
     if (loadingActiveAccount) return;
     try {
       setLoading(true);
       const [tradesRes, dashboardRes] = await Promise.all([
-        getTrades({ status: 'OPEN', account_id: activeAccount ? activeAccount.account_id : 1 }),
-        getDashboard(activeAccount ? activeAccount.account_id : 1)
+        getTrades({ status: 'OPEN', account_id: activeAccount.account_id }),
+        getDashboard(activeAccount.account_id)
       ]);
+
+      const adjustedCapital = activeAccount && dashboardRes.data
+        ? (dashboardRes.data.open_trades_capital || 0) * (activeAccount.margin_multiplier || 1)
+        : 0;
+
       setTrades(tradesRes.data || []);
-      setDashboard(dashboardRes.data);
+      setDashboard({
+        open_trades: dashboardRes.data.open_trades,
+        capital_at_risk: adjustedCapital,
+        total_premium: dashboardRes.data.total_net_premiums || dashboardRes.data.premium_collected || 0,
+        open_trades_net_premium: dashboardRes.data.open_trades_net_premium || dashboardRes.data.OpenTradesNetPremium || 0
+      });
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -278,15 +308,27 @@ function TradesPage() {
           </div>
           <div className="stat-card">
             <div className="stat-label">Capital Comprometido</div>
-            <div className="stat-value">${(dashboard.capital_at_risk || 0).toFixed(2)}</div>
+            <div className="stat-value">
+              ${dashboard.capital_at_risk
+                ? dashboard.capital_at_risk.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                : '0'}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Prima Total Cobrada</div>
-            <div className="stat-value positive">${(dashboard.total_premium || 0).toFixed(2)}</div>
+            <div className="stat-value positive">
+              ${dashboard.total_premium
+                ? dashboard.total_premium.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                : '0'}
+            </div>
           </div>
           <div className="stat-card">
-            <div className="stat-label">Win Rate</div>
-            <div className="stat-value">{(dashboard.win_rate || 0).toFixed(1)}%</div>
+            <div className="stat-label">Primas Netas de Trades Abiertos</div>
+            <div className="stat-value positive">
+              ${dashboard.open_trades_net_premium
+                ? dashboard.open_trades_net_premium.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                : '0'}
+            </div>
           </div>
         </div>
       )}
