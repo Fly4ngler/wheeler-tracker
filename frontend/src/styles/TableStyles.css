@@ -1,0 +1,18 @@
+.btn-edit, .btn-close, .btn-delete {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  min-width: auto;
+  height: 30px;
+  margin-right: 6px; /* espacio entre botones */
+}
+
+.btn-delete {
+  margin-right: 0; /* último botón sin margen a la derecha */
+}
+
+/* Centrar columnas Contratos, DTE y 21DTE */
+td:nth-child(3), td:nth-child(9), td:nth-child(8),
+th:nth-child(3), th:nth-child(9), th:nth-child(8) {
+  text-align: center;
+}

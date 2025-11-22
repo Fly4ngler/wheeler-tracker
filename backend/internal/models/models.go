@@ -26,6 +26,7 @@ type Trade struct {
     Contracts       int        `json:"contracts"`
     StrikePrice     float64    `json:"strike_price"`
     PremiumPerShare float64    `json:"premium_per_share"`
+    Delta           *float64   `json:"delta,omitempty"`         // <--- CAMPO NUEVO
     OpenDate        string     `json:"open_date"`
     ExpirationDate  string     `json:"expiration_date"`
     CloseDate       *string    `json:"close_date,omitempty"`

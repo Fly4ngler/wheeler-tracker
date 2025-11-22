@@ -5,8 +5,8 @@ import TradesPage from './pages/TradesPage';
 import PositionsPage from './pages/PositionsPage';
 import WheelsPage from './pages/WheelsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
-import TickerPage from './pages/TickerPage';
 import ManagementPage from './pages/ManagementPage';
+import PortfolioPage from './pages/PortfolioPage';
 import { ActiveAccountProvider } from './context/ActiveAccountContext';
 import ActiveAccountLabel from './pages/ActiveAccountLabel';
 
@@ -18,27 +18,24 @@ function Sidebar() {
   return (
     <div className="sidebar">
       <div className="logo">Options Wheel Tracker</div>
-
       <Link to="/trades" className={`nav-item ${isActive('/trades')}`}>
         <span></span> Trades
       </Link>
-
       <Link to="/positions" className={`nav-item ${isActive('/positions')}`}>
         <span></span> Positions
       </Link>
-
       <Link to="/wheels" className={`nav-item ${isActive('/wheels')}`}>
         <span></span> Wheels
       </Link>
-
+      <Link to="/portfolio" className={`nav-item ${isActive('/portfolio')}`}>
+        <span></span> Portfolio
+      </Link>
       <Link to="/ticker" className={`nav-item ${isActive('/ticker')}`}>
         <span></span> Ticker Analysis
       </Link>
-
       <Link to="/analytics" className={`nav-item ${isActive('/analytics')}`}>
         <span></span> Analytics
       </Link>
-
       <Link to="/management" className={`nav-item ${isActive('/management')}`}>
         <span></span> Management
       </Link>
@@ -46,6 +43,7 @@ function Sidebar() {
   );
 }
 
+// Render principal sin banda
 function App() {
   return (
     <ActiveAccountProvider>
@@ -59,7 +57,7 @@ function App() {
               <Route path="/trades" element={<TradesPage />} />
               <Route path="/positions" element={<PositionsPage />} />
               <Route path="/wheels" element={<WheelsPage />} />
-              <Route path="/ticker" element={<TickerPage />} />
+              <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/management" element={<ManagementPage />} />
             </Routes>

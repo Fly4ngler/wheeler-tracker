@@ -78,12 +78,10 @@ func main() {
         v1.POST("/trades/import", tradeImportHandler.Import)
         v1.POST("/trades/validate", tradeImportHandler.ValidateCSV)
         v1.POST("/trades/confirm", tradeImportHandler.ConfirmImport)
-        v1.POST("/trades/buy", tradeHandler.BuyStocks)
-        v1.POST("/trades/sell", tradeHandler.SellStocks)
 
         // ==================== ACCOUNTS ====================
         v1.GET("/accounts", accountHandler.ListAccounts)
-        v1.GET("/accounts/all", accountHandler.ListAllAccounts)
+        v1.GET("/accounts/all", accountHandler.ListAllAccounts) // Nuevo endpoint listado todas cuentas
         v1.GET("/accounts/:id", accountHandler.GetAccount)
         v1.POST("/accounts", accountHandler.CreateAccount)
         v1.PUT("/accounts/:id", accountHandler.UpdateAccount)

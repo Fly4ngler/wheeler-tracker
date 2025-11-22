@@ -11,23 +11,23 @@ export default function AccountSelector({ style }) {
       try {
         setLoading(true);
         const res = await fetch('/api/v1/accounts/all');
-        if (!res.ok) throw new Error('No se pudo cargar cuentas');
+        if (!res.ok) throw new Error('Failed to load accounts');
         const data = await res.json();
         setAccounts(data || []);
 
-        // Si no hay cuentas, desactiva la cuenta activa
+        // If no accounts, deactivate active account
         if (!data || data.length === 0) {
           setActiveAccountId(null);
           return;
         }
 
-        // Si no hay cuenta activa pero hay cuentas, selecciona la primera activa
+        // If no active account but accounts exist, select first active or first account
         if ((!activeAccountId || activeAccountId === 0) && data && data.length > 0) {
           const firstActive = data.find(acc => acc.is_active) || data[0];
           setActiveAccountId(firstActive.account_id);
         }
       } catch (err) {
-        console.error('Error cargando cuentas:', err);
+        console.error('Error loading accounts:', err);
         setAccounts([]);
         setActiveAccountId(null);
       } finally {
@@ -35,13 +35,12 @@ export default function AccountSelector({ style }) {
       }
     }
     fetchAccounts();
-    // Actualiza en cada render si cambia activeAccountId
   }, [setActiveAccountId]);
 
   if (loading) {
     return (
       <div style={style}>
-        <span style={{ color: "#9ca3af" }}>Cargando cuentas...</span>
+        <span style={{ color: "#9ca3af" }}>Loading accounts...</span>
       </div>
     );
   }
@@ -49,9 +48,9 @@ export default function AccountSelector({ style }) {
   if (!accounts || accounts.length === 0) {
     return (
       <div style={style}>
-        <span style={{ color: "#ef4444" }}>No hay cuentas disponibles</span>
+        <span style={{ color: "#ef4444" }}>No accounts available</span>
         <select disabled style={{ borderRadius: 6, padding: '4px 12px', minWidth: 120, marginLeft: 8 }}>
-          <option value="">Seleccione cuenta</option>
+          <option value="">Select account</option>
         </select>
       </div>
     );
@@ -59,13 +58,13 @@ export default function AccountSelector({ style }) {
 
   return (
     <div style={style}>
-      <label style={{ marginRight: 8, color: "#9ca3af" }}>Cuenta activa:</label>
+      <label style={{ marginRight: 8, color: "#9ca3af" }}>Active account:</label>
       <select
         value={activeAccountId || ''}
         onChange={(e) => setActiveAccountId(Number(e.target.value))}
         style={{ borderRadius: 6, padding: '4px 12px', minWidth: 120 }}
       >
-        <option value="">Seleccione cuenta</option>
+        <option value="">Select account</option>
         {accounts.map(acc => (
           <option key={acc.account_id} value={acc.account_id}>
             {acc.name}

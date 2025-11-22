@@ -7,6 +7,7 @@ import (
     "io/ioutil"
     "log"
     "net/http"
+    "strconv"
 
     "github.com/gin-gonic/gin"
     "github.com/wheel-tracker/backend/internal/models"
@@ -44,7 +45,7 @@ func (h *TradeHandler) ListTrades(c *gin.Context) {
 
     query := `
         SELECT trade_id, account_id, symbol, trade_type, contracts, strike_price,
-               premium_per_share, open_date, expiration_date, close_date, close_method,
+               premium_per_share, delta, open_date, expiration_date, close_date, close_method,
                close_price, fees, status, tags, notes, wheel_id, created_at, updated_at
         FROM trades WHERE status = ?
     `
@@ -68,7 +69,7 @@ func (h *TradeHandler) ListTrades(c *gin.Context) {
     for rows.Next() {
         var t models.Trade
         err := rows.Scan(&t.TradeID, &t.AccountID, &t.Symbol, &t.TradeType, &t.Contracts,
-            &t.StrikePrice, &t.PremiumPerShare, &t.OpenDate, &t.ExpirationDate,
+            &t.StrikePrice, &t.PremiumPerShare, &t.Delta, &t.OpenDate, &t.ExpirationDate,
             &t.CloseDate, &t.CloseMethod, &t.ClosePrice, &t.Fees, &t.Status,
             &t.Tags, &t.Notes, &t.WheelID, &t.CreatedAt, &t.UpdatedAt)
         if err != nil {
@@ -82,18 +83,16 @@ func (h *TradeHandler) ListTrades(c *gin.Context) {
 
 func (h *TradeHandler) GetTrade(c *gin.Context) {
     id := c.Param("id")
-
     var t models.Trade
     err := h.db.QueryRow(`
         SELECT trade_id, account_id, symbol, trade_type, contracts, strike_price,
-               premium_per_share, open_date, expiration_date, close_date, close_method,
+               premium_per_share, delta, open_date, expiration_date, close_date, close_method,
                close_price, fees, status, tags, notes, wheel_id, created_at, updated_at
         FROM trades WHERE trade_id = ?
     `, id).Scan(&t.TradeID, &t.AccountID, &t.Symbol, &t.TradeType, &t.Contracts,
-        &t.StrikePrice, &t.PremiumPerShare, &t.OpenDate, &t.ExpirationDate,
+        &t.StrikePrice, &t.PremiumPerShare, &t.Delta, &t.OpenDate, &t.ExpirationDate,
         &t.CloseDate, &t.CloseMethod, &t.ClosePrice, &t.Fees, &t.Status,
         &t.Tags, &t.Notes, &t.WheelID, &t.CreatedAt, &t.UpdatedAt)
-
     if err == sql.ErrNoRows {
         c.JSON(http.StatusNotFound, gin.H{"error": "Trade not found"})
         return
@@ -102,25 +101,21 @@ func (h *TradeHandler) GetTrade(c *gin.Context) {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-
     c.JSON(http.StatusOK, t)
 }
 
 func (h *TradeHandler) CreateTrade(c *gin.Context) {
     var t models.Trade
-
     bodyBytes, err := c.GetRawData()
     if err == nil {
         log.Printf("Received trade create payload (raw): %s\n", string(bodyBytes))
         c.Request.Body = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
     }
-
     if err := c.ShouldBindJSON(&t); err != nil {
         log.Printf("Binding JSON error: %v\n", err)
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
-
     if t.Symbol == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Symbol is required and must be non-empty"})
         return
@@ -151,7 +146,6 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Expiration date must be equal or after open date"})
         return
     }
-
     if t.AccountID == 0 {
         activeID, err := h.getActiveAccountID()
         if err != nil {
@@ -160,30 +154,19 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
         }
         t.AccountID = activeID
     }
-
     var isActive int
     err = h.db.QueryRow("SELECT is_active FROM accounts WHERE account_id = ?", t.AccountID).Scan(&isActive)
-    if err == sql.ErrNoRows || isActive != 1 {
+    if err != nil || isActive != 1 {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Associated account does not exist or is not active"})
         return
-    } else if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
     }
-
-    result, err := h.db.Exec(`
-        INSERT INTO trades (account_id, symbol, trade_type, contracts, strike_price,
-                           premium_per_share, open_date, expiration_date, fees, status, tags, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)
-    `, t.AccountID, t.Symbol, t.TradeType, t.Contracts, t.StrikePrice,
-        t.PremiumPerShare, t.OpenDate, t.ExpirationDate, t.Fees, t.Tags, t.Notes)
-
+    result, err := h.db.Exec("INSERT INTO trades (account_id, symbol, trade_type, contracts, strike_price, premium_per_share, delta, open_date, expiration_date, fees, status, tags, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, ?)",
+        t.AccountID, t.Symbol, t.TradeType, t.Contracts, t.StrikePrice, t.PremiumPerShare, t.Delta, t.OpenDate, t.ExpirationDate, t.Fees, t.Tags, t.Notes)
     if err != nil {
         log.Printf("DB insert error: %v\n", err)
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-
     id, _ := result.LastInsertId()
     t.TradeID = int(id)
     c.JSON(http.StatusCreated, t)
@@ -192,108 +175,184 @@ func (h *TradeHandler) CreateTrade(c *gin.Context) {
 func (h *TradeHandler) UpdateTrade(c *gin.Context) {
     id := c.Param("id")
     var t models.Trade
-
     if err := c.ShouldBindJSON(&t); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        c.JSON(http.StatusBadRequest, gin.H{"error": err})
         return
     }
-
-    _, err := h.db.Exec(`
-        UPDATE trades
-        SET symbol = ?, trade_type = ?, contracts = ?, strike_price = ?,
-            premium_per_share = ?, fees = ?, tags = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE trade_id = ?
-    `, t.Symbol, t.TradeType, t.Contracts, t.StrikePrice,
-        t.PremiumPerShare, t.Fees, t.Tags, t.Notes, id)
-
+    _, err := h.db.Exec("UPDATE trades SET symbol = ?, trade_type = ?, contracts = ?, strike_price = ?, premium_per_share = ?, delta = ?, fees = ?, tags = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE trade_id = ?",
+        t.Symbol, t.TradeType, t.Contracts, t.StrikePrice, t.PremiumPerShare, t.Delta, t.Fees, t.Tags, t.Notes, id)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
-
-    c.JSON(http.StatusOK, gin.H{"message": "Trade updated successfully"})
-}
-
-func (h *TradeHandler) CloseTrade(c *gin.Context) {
-    id := c.Param("id")
-
-    var req struct {
-        CloseDate   string  `json:"close_date" binding:"required"`
-        CloseMethod string  `json:"close_method" binding:"required"`
-        ClosePrice  float64 `json:"close_price"`
-    }
-
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-
-    _, err := h.db.Exec(`
-        UPDATE trades
-        SET close_date = ?, close_method = ?, close_price = ?, status = 'CLOSED', updated_at = CURRENT_TIMESTAMP
-        WHERE trade_id = ?
-    `, req.CloseDate, req.CloseMethod, req.ClosePrice, id)
-
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-        return
-    }
-
-    c.JSON(http.StatusOK, gin.H{"message": "Trade closed successfully"})
+    c.JSON(http.StatusOK, gin.H{"message": "Trade updated"})
 }
 
 func (h *TradeHandler) DeleteTrade(c *gin.Context) {
     id := c.Param("id")
-
-    _, err := h.db.Exec("DELETE FROM trades WHERE trade_id = ?", id)
+    result, err := h.db.Exec("DELETE FROM trades WHERE trade_id = ?", id)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    if rowsAffected == 0 {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Trade not found"})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"message": "Trade deleted"})
+}
 
-    c.JSON(http.StatusOK, gin.H{"message": "Trade deleted successfully"})
+func (h *TradeHandler) CloseTrade(c *gin.Context) {
+    id := c.Param("id")
+    var payload struct {
+        CloseDate   string  "json:\"close_date\""
+        CloseMethod string  "json:\"close_method\""
+        ClosePrice  float64 "json:\"close_price\""
+        Fees        float64 "json:\"fees\""
+        Notes       string  "json:\"notes\""
+    }
+    if err := c.ShouldBindJSON(&payload); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    result, err := h.db.Exec("UPDATE trades SET close_date = ?, close_method = ?, close_price = ?, fees = ?, status = 'CLOSED', notes = ? WHERE trade_id = ? AND status = 'OPEN'",
+        payload.CloseDate, payload.CloseMethod, payload.ClosePrice, payload.Fees, payload.Notes, id)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    if rowsAffected == 0 {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Trade not found or already closed"})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"message": "Trade closed"})
+}
+
+func (h *TradeHandler) BuyStocks(c *gin.Context) {
+    var payload struct {
+        TradeID int     "json:\"trade_id\""
+        Shares  int     "json:\"shares\""
+        Price   float64 "json:\"price\""
+        Date    string  "json:\"date\""
+    }
+    if err := c.ShouldBindJSON(&payload); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"message": "BuyStocks method is a stub, implement as needed"})
+}
+
+func (h *TradeHandler) SellStocks(c *gin.Context) {
+    var payload struct {
+        TradeID int     "json:\"trade_id\""
+        Shares  int     "json:\"shares\""
+        Price   float64 "json:\"price\""
+        Date    string  "json:\"date\""
+    }
+    if err := c.ShouldBindJSON(&payload); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    c.JSON(http.StatusOK, gin.H{"message": "SellStocks method is a stub, implement as needed"})
 }
 
 func (h *TradeHandler) GetDashboard(c *gin.Context) {
     var dashboard models.Dashboard
 
-    accountID := c.Query("account_id")
-    if accountID == "" {
+    accountIDStr := c.Query("account_id")
+    if accountIDStr == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
         return
     }
 
-    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ?", accountID).Scan(&dashboard.TotalTrades)
-    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'OPEN' AND account_id = ?", accountID).Scan(&dashboard.OpenTrades)
-    h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE status = 'CLOSED' AND account_id = ?", accountID).Scan(&dashboard.ClosedTrades)
-
-    h.db.QueryRow(`
-        SELECT COALESCE(SUM((premium_per_share * contracts * 100) - fees), 0)
-        FROM trades WHERE status = 'OPEN' AND account_id = ?
-    `, accountID).Scan(&dashboard.OpenTradesNetPremium)
-
-    h.db.QueryRow(`
-        SELECT COALESCE(SUM((premium_per_share * contracts * 100) - (close_price * contracts * 100) - fees), 0)
-        FROM trades WHERE status = 'CLOSED' AND account_id = ?
-    `, accountID).Scan(&dashboard.PremiumCollected)
-
-    // Cálculo de Capital comprometido
-    h.db.QueryRow(`
-        SELECT COALESCE(SUM(strike_price * contracts * 100), 0)
-        FROM trades WHERE status = 'OPEN' AND account_id = ?
-    `, accountID).Scan(&dashboard.OpenTradesCapital)
-
-    // Asignaciones adicionales para otros campos en Dashboard
-    dashboard.TotalNetPremiums = dashboard.OpenTradesNetPremium + dashboard.PremiumCollected
-    dashboard.OpenPositionsPL = 0
-    dashboard.ClosedPositionsPL = 0
-    dashboard.TotalPL = 0
-    dashboard.TotalCapital = dashboard.OpenTradesCapital
-    dashboard.AverageYield = 0
-
-    if dashboard.TotalTrades > 0 {
-        dashboard.WinRate = float64(dashboard.ClosedTrades) / float64(dashboard.TotalTrades) * 100
+    accountID, err := strconv.Atoi(accountIDStr)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account_id"})
+        return
     }
+
+    err = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ?", accountID).Scan(&dashboard.TotalTrades)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    err = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ? AND status = 'OPEN'", accountID).Scan(&dashboard.OpenTrades)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    err = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ? AND status = 'CLOSED'", accountID).Scan(&dashboard.ClosedTrades)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    var wins int
+    err = h.db.QueryRow("SELECT COUNT(*) FROM trades WHERE account_id = ? AND status = 'CLOSED' AND close_price > strike_price", accountID).Scan(&wins)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+    if dashboard.ClosedTrades > 0 {
+        dashboard.WinRate = float64(wins) / float64(dashboard.ClosedTrades)
+    }
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM(premium_per_share * contracts), 0) FROM trades WHERE account_id = ?", accountID).Scan(&dashboard.TotalNetPremiums)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM(COALESCE(close_price,0) - strike_price) * contracts, 0) FROM trades WHERE account_id = ? AND status = 'OPEN'", accountID).Scan(&dashboard.OpenPositionsPL)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM((close_price - strike_price) * contracts), 0) FROM trades WHERE account_id = ? AND status = 'CLOSED'", accountID).Scan(&dashboard.ClosedPositionsPL)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    dashboard.TotalPL = dashboard.OpenPositionsPL + dashboard.ClosedPositionsPL
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM(strike_price * contracts), 0) FROM trades WHERE account_id = ? AND status = 'OPEN'", accountID).Scan(&dashboard.OpenTradesCapital)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM(strike_price * contracts), 0) FROM trades WHERE account_id = ?", accountID).Scan(&dashboard.TotalCapital)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    if dashboard.TotalCapital > 0 {
+        dashboard.AverageYield = dashboard.TotalNetPremiums / dashboard.TotalCapital
+    }
+
+    err = h.db.QueryRow("SELECT IFNULL(SUM(premium_per_share * contracts), 0) FROM trades WHERE account_id = ? AND status = 'OPEN'", accountID).Scan(&dashboard.OpenTradesNetPremium)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    dashboard.PremiumCollected = dashboard.TotalNetPremiums
 
     c.JSON(http.StatusOK, dashboard)
 }
